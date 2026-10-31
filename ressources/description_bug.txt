@@ -1,0 +1,6 @@
+Bug : impossible de se connecter à l'application.
+Depuis la dernière mise à jour, la page de connexion affiche « Identifiants invalides »
+même lorsque le nom d'utilisateur et le mot de passe sont corrects.
+Le problème survient sur tous les navigateurs testés (Firefox, Chrome, Edge).
+Étapes : ouvrir la page de connexion, saisir des identifiants valides, cliquer sur « Se connecter ».
+Résultat attendu : affichage du tableau de bord.

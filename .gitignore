@@ -1,0 +1,18 @@
+# Fichiers compilés par Python (recréés automatiquement à chaque exécution)
+__pycache__/
+*.py[cod]
+
+# Données produites par l'application (sauvegarde JSON et son fichier temporaire)
+sauvegarde.json
+*.json.tmp
+
+# Images copiées par l'application : locales ; seules les images de démonstration sont versionnées
+donnees/images/*
+!donnees/images/demo_*.png
+
+# Fichiers d'éditeurs et du système
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

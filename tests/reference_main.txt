@@ -1,0 +1,245 @@
+
+======================================================================
+A. Création des tickets
+======================================================================
+Test     : Abdoul Razack crée T1 « Bug de connexion » (HAUTE)
+Résultat : creator avant = None, après = Abdoul Razack ; statut initial : OUVERT
+Test     : Abdoul Razack crée T2 « Erreur d'affichage mobile » (MOYENNE)
+Résultat : creator avant = None, après = Abdoul Razack ; statut initial : OUVERT
+Test     : T Julien crée T3 « Export CSV » (BASSE)
+Résultat : creator avant = None, après = T Julien ; statut initial : OUVERT
+Test     : T Julien crée T4 « Lenteur du tableau de bord » (MOYENNE)
+Résultat : creator avant = None, après = T Julien ; statut initial : OUVERT
+
+======================================================================
+B. Agrégat : mesTickets()
+======================================================================
+Test     : les tickets d'Abdoul Razack
+Résultat : T1 « Bug de connexion », T2 « Erreur d'affichage mobile »
+Test     : le ticket n°1 d'Abdoul Razack
+Résultat : T1 « Bug de connexion »
+Test     : les tickets de T Julien
+Résultat : T3 « Export CSV », T4 « Lenteur du tableau de bord »
+
+======================================================================
+C. L'Admin consulte la liste des tickets
+======================================================================
+Test     : Ambroise Fleury appelle viewAllTickets()
+Résultat :
+  #1  Bug de connexion             OUVERT     créateur : Abdoul Razack  assigné : aucun       commentaires : 0
+  #2  Erreur d'affichage mobile    OUVERT     créateur : Abdoul Razack  assigné : aucun       commentaires : 0
+  #3  Export CSV                   OUVERT     créateur : T Julien       assigné : aucun       commentaires : 0
+  #4  Lenteur du tableau de bord   OUVERT     créateur : T Julien       assigné : aucun       commentaires : 0
+Résultat : 4 ticket(s) retourné(s)
+
+======================================================================
+D. Session d'édition : modifications en attente
+======================================================================
+Test     : Abdoul Razack ouvre une session d'édition sur T1
+Résultat : session ouverte (Session d'édition)
+Test     : ajout de 2 commentaires et de 3 éléments (texte, image, vidéo)
+Résultat : modificationsEnAttente (5) :
+  1. Ajouter le commentaire « Le bug se reproduit sur Chrome et Firefox. » au ticket #1
+  2. Ajouter le commentaire « Capture d'écran et vidéo jointes à la description. » au ticket #1
+  3. Ajouter l'élément [Texte] description_bug.txt (434 caractères) au ticket #1
+  4. Ajouter l'élément [Image] capture_ecran.png (160 octets) au ticket #1
+  5. Ajouter l'élément [Vidéo] demo_bug.mp4 (4096 octets, contenu chargé : non) au ticket #1
+Test     : T1 a-t-il changé avant appliquer() ?
+Résultat : ticket inchangé ? OUI (T1 : statut OUVERT, assigné : aucun, 0 commentaire(s), 0 élément(s))
+
+======================================================================
+E. Annulation de la dernière modification
+======================================================================
+Test     : annulation de la dernière modification
+Résultat : modification retirée : Ajouter l'élément [Vidéo] demo_bug.mp4 (4096 octets, contenu chargé : non) au ticket #1
+Résultat : pile restante (4) :
+  1. Ajouter le commentaire « Le bug se reproduit sur Chrome et Firefox. » au ticket #1
+  2. Ajouter le commentaire « Capture d'écran et vidéo jointes à la description. » au ticket #1
+  3. Ajouter l'élément [Texte] description_bug.txt (434 caractères) au ticket #1
+  4. Ajouter l'élément [Image] capture_ecran.png (160 octets) au ticket #1
+Résultat : ticket inchangé ? OUI (T1 : statut OUVERT, assigné : aucun, 0 commentaire(s), 0 élément(s))
+
+======================================================================
+F. Pause et reprise de la session
+======================================================================
+Test     : mise en pause de la session
+Résultat : estEnPause = True
+Test     : ajouterCommentaire() pendant la pause
+Résultat : refusé (SessionIndisponibleException) : Session d'édition en pause : ajout impossible
+Résultat : ticket inchangé ? OUI (T1 : statut OUVERT, assigné : aucun, 0 commentaire(s), 0 élément(s))
+Test     : annulation de la dernière modification pendant la pause
+Résultat : refusé (SessionIndisponibleException) : Session d'édition en pause : annulation impossible
+Résultat : ticket inchangé ? OUI (T1 : statut OUVERT, assigné : aucun, 0 commentaire(s), 0 élément(s))
+Test     : application des modifications pendant la pause
+Résultat : refusé (SessionIndisponibleException) : Session d'édition en pause : application impossible
+Résultat : ticket inchangé ? OUI (T1 : statut OUVERT, assigné : aucun, 0 commentaire(s), 0 élément(s))
+Test     : reprise, puis nouvel ajout de la vidéo
+Résultat : estEnPause = False ; ajout accepté, pile (5) :
+  1. Ajouter le commentaire « Le bug se reproduit sur Chrome et Firefox. » au ticket #1
+  2. Ajouter le commentaire « Capture d'écran et vidéo jointes à la description. » au ticket #1
+  3. Ajouter l'élément [Texte] description_bug.txt (434 caractères) au ticket #1
+  4. Ajouter l'élément [Image] capture_ecran.png (160 octets) au ticket #1
+  5. Ajouter l'élément [Vidéo] demo_bug.mp4 (4096 octets, contenu chargé : non) au ticket #1
+
+======================================================================
+G. Application de la session
+======================================================================
+Test     : appliquer()
+Résultat : rapport d'exécution :
+  Succès :
+    [OK]    Ajouter le commentaire « Le bug se reproduit sur Chrome et Firefox. » au ticket #1
+    [OK]    Ajouter le commentaire « Capture d'écran et vidéo jointes à la description. » au ticket #1
+    [OK]    Ajouter l'élément [Texte] description_bug.txt (434 caractères) au ticket #1
+    [OK]    Ajouter l'élément [Image] capture_ecran.png (160 octets) au ticket #1
+    [OK]    Ajouter l'élément [Vidéo] demo_bug.mp4 (4096 octets, contenu chargé : non) au ticket #1
+  Refus :
+    (aucun)
+  Bilan : 5 succès, 0 refus
+Test     : T1 reflète-t-il enfin les modifications ?
+Résultat : 2 commentaire(s), 3 élément(s) (avant : 0 commentaire(s), 0 élément(s))
+  Ticket #1 : Bug de connexion
+    Statut       : OUVERT
+    Priorité     : HAUTE
+    Créateur     : Abdoul Razack
+    Assigné      : aucun
+    Créé le      : AAAA-MM-JJ | mis à jour le : AAAA-MM-JJ
+    Commentaires : 2
+      - Abdoul Razack (AAAA-MM-JJ) : Le bug se reproduit sur Chrome et Firefox.
+      - Abdoul Razack (AAAA-MM-JJ) : Capture d'écran et vidéo jointes à la description.
+    Éléments de description : 3
+Test     : T1.description.afficher()
+Résultat :
+  1. [Texte] description_bug.txt (434 caractères)
+  2. [Image] capture_ecran.png (160 octets)
+  3. [Vidéo] demo_bug.mp4 (4096 octets, contenu chargé : non)
+Test     : chargement différé de la vidéo (3e élément de T1)
+Résultat : estCharge avant chargerContenuReel() : False
+Résultat : estCharge après chargerContenuReel() : True
+Résultat : [Vidéo] demo_bug.mp4 (4096 octets, contenu chargé : oui)
+
+======================================================================
+H. Session close
+======================================================================
+Test     : ajout de commentaire après application de la session
+Résultat : refusé (SessionIndisponibleException) : Session d'édition : application déjà effectuée, ajout impossible
+Résultat : ticket inchangé ? OUI (T1 : statut OUVERT, assigné : aucun, 2 commentaire(s), 3 élément(s))
+
+======================================================================
+I. Accès refusé à la session d'édition
+======================================================================
+Test     : T Julien tente d'ouvrir une session d'édition sur T1
+Résultat : refusé (AccesRefuseException) : T Julien n'est pas le créateur du ticket 1 : session d'édition refusée
+Résultat : ticket inchangé ? OUI (T1 : statut OUVERT, assigné : aucun, 2 commentaire(s), 3 élément(s))
+
+======================================================================
+J. Cycle nominal : OUVERT -> ASSIGNE -> VALIDATION -> TERMINE
+======================================================================
+Test     : Ambroise Fleury assigne T1 à Mike Tonny
+Résultat : statut ASSIGNE, assigné : Mike Tonny
+Test     : Mike Tonny soumet T1 en validation
+Résultat : statut VALIDATION
+Test     : Ambroise Fleury valide T1
+Résultat : statut TERMINE, assigné : Mike Tonny
+
+======================================================================
+K. Refus de transition
+======================================================================
+Test     : Ambroise Fleury assigne T2 à Mike Tonny
+Résultat : statut ASSIGNE, assigné : Mike Tonny
+Test     : Hein Tommy tente de soumettre T2 en validation
+Résultat : refusé (AccesRefuseException) : Hein Tommy n'est pas l'assigné du ticket 2
+Résultat : ticket inchangé ? OUI (T2 : statut ASSIGNE, assigné : Mike Tonny, 0 commentaire(s), 0 élément(s))
+Test     : Ambroise Fleury tente de valider T2 depuis ASSIGNE
+Résultat : refusé (TransitionInvalideException) : Transition invalide : impossible de passer de l'état ASSIGNE au statut TERMINE
+Résultat : ticket inchangé ? OUI (T2 : statut ASSIGNE, assigné : Mike Tonny, 0 commentaire(s), 0 élément(s))
+
+======================================================================
+L. Réassignation directe et rejet de validation
+======================================================================
+Test     : Ambroise Fleury réassigne T2 à Hein Tommy (ASSIGNE -> ASSIGNE)
+Résultat : assigné avant : Mike Tonny ; après : Hein Tommy ; statut ASSIGNE
+Test     : Hein Tommy soumet T2 en validation
+Résultat : statut VALIDATION
+Test     : Ambroise Fleury rejette en réassignant T2 à Mike Tonny (VALIDATION -> ASSIGNE)
+Résultat : statut ASSIGNE, assigné : Mike Tonny
+
+======================================================================
+M. Désassignation
+======================================================================
+Test     : Ambroise Fleury désassigne T2
+Résultat : statut OUVERT, assigné : aucun, aDejaEteAssigne : True
+
+======================================================================
+N. Suppression de tickets
+======================================================================
+Test     : T Julien supprime T4 (jamais assigné)
+Résultat : accepté ; T4 dans le dépôt : False
+Test     : Abdoul Razack tente de supprimer T2 (OUVERT mais déjà assigné)
+Résultat : refusé (SuppressionInterditeException) : Le ticket 2 a déjà été assigné : suppression interdite
+Résultat : ticket inchangé ? OUI (T2 : statut OUVERT, assigné : aucun, 0 commentaire(s), 0 élément(s))
+Résultat : T2 dans le dépôt : True
+Test     : T Julien tente de supprimer T1 (créé par Abdoul Razack)
+Résultat : refusé (AccesRefuseException) : T Julien n'est pas le créateur du ticket 1
+Résultat : ticket inchangé ? OUI (T1 : statut TERMINE, assigné : Mike Tonny, 2 commentaire(s), 3 élément(s))
+Résultat : T1 dans le dépôt : True
+
+======================================================================
+O. Fermeture et états terminaux
+======================================================================
+Test     : Ambroise Fleury ferme T3 (OUVERT -> FERME)
+Résultat : statut FERME
+Test     : Ambroise Fleury tente de fermer T1 (TERMINE)
+Résultat : refusé (TransitionInvalideException) : Transition invalide : impossible de passer de l'état TERMINE au statut FERME
+Résultat : ticket inchangé ? OUI (T1 : statut TERMINE, assigné : Mike Tonny, 2 commentaire(s), 3 élément(s))
+Test     : Ambroise Fleury tente d'assigner T1 (TERMINE) à Hein Tommy
+Résultat : refusé (TransitionInvalideException) : Transition invalide : impossible de passer de l'état TERMINE au statut ASSIGNE
+Résultat : ticket inchangé ? OUI (T1 : statut TERMINE, assigné : Mike Tonny, 2 commentaire(s), 3 élément(s))
+Résultat : l'assigné de T1 reste Mike Tonny
+
+======================================================================
+P. Lot administrateur
+======================================================================
+Test     : T Julien crée T5 « Erreur d'export » (BASSE)
+Résultat : statut OUVERT, T5 dans le dépôt : True
+Test     : Ambroise Fleury ouvre un lot et y prépare 4 opérations
+Résultat : Lot administrateur, modificationsEnAttente (4) :
+  1. Assigner le ticket #2 à Hein Tommy
+  2. Valider le ticket #2
+  3. Fermer le ticket #1
+  4. Assigner le ticket #5 à Mike Tonny
+Test     : T Julien supprime T5 avant l'application du lot
+Résultat : T5 dans le dépôt : False
+Test     : appliquer() le lot
+Résultat : rapport d'exécution :
+  Succès :
+    [OK]    Assigner le ticket #2 à Hein Tommy
+  Refus :
+    [REFUS] Valider le ticket #2
+            motif : Transition invalide : impossible de passer de l'état ASSIGNE au statut TERMINE
+    [REFUS] Fermer le ticket #1
+            motif : Transition invalide : impossible de passer de l'état TERMINE au statut FERME
+    [REFUS] Assigner le ticket #5 à Mike Tonny
+            motif : ticket retiré du dépôt
+  Bilan : 1 succès, 3 refus
+Résultat : T2 : statut ASSIGNE, assigné : Hein Tommy (assignation appliquée, validation refusée)
+Résultat : ticket inchangé ? OUI (T1 : statut TERMINE, assigné : Mike Tonny, 2 commentaire(s), 3 élément(s))
+Résultat : ticket inchangé ? OUI (T5 : statut OUVERT, assigné : aucun, 0 commentaire(s), 0 élément(s))
+
+======================================================================
+Q. Bilan et protections
+======================================================================
+Test     : Ambroise Fleury appelle viewAllTickets()
+Résultat :
+  #1  Bug de connexion             TERMINE    créateur : Abdoul Razack  assigné : Mike Tonny  commentaires : 2
+  #2  Erreur d'affichage mobile    ASSIGNE    créateur : Abdoul Razack  assigné : Hein Tommy  commentaires : 0
+  #3  Export CSV                   FERME      créateur : T Julien       assigné : aucun       commentaires : 0
+Test     : T1.status = Statut.OUVERT
+Résultat : refusé (AttributeError) : property 'status' of 'Ticket' object has no setter
+Résultat : T1 toujours TERMINE
+Résultat : ticket inchangé ? OUI (T1 : statut TERMINE, assigné : Mike Tonny, 2 commentaire(s), 3 élément(s))
+Test     : méthodes absentes selon le rôle ou le type de session
+Résultat : existence attribut (Abdoul Razack, 'viewAllTickets')         = False
+Résultat : existence attribut(Ambroise Fleury, 'supprimerTicket')      = False
+Résultat : existence attribut(Ambroise Fleury, 'ouvrirSessionEdition') = False
+Résultat : existence attribut(lot, 'mettreEnPause')                    = False
+Résultat : existence attribut(lot, 'annulerDerniere')                  = False

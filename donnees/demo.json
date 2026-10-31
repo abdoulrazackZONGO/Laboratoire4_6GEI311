@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "utilisateurs": [
+    {
+      "id": 1,
+      "name": "Ambroise Fleury",
+      "email": "ambroise.fleury@uqac.ca",
+      "role": "Admin"
+    },
+    {
+      "id": 2,
+      "name": "Abdoul Razack",
+      "email": "abdoul.razack@uqac.ca",
+      "role": "User"
+    },
+    {
+      "id": 3,
+      "name": "T Julien",
+      "email": "t.julien@uqac.ca",
+      "role": "User"
+    },
+    {
+      "id": 4,
+      "name": "Mike Tonny",
+      "email": "mike.tonny@uqac.ca",
+      "role": "User"
+    },
+    {
+      "id": 5,
+      "name": "Hein Tommy",
+      "email": "hein.tommy@uqac.ca",
+      "role": "User"
+    }
+  ],
+  "tickets": [
+    {
+      "ticketID": 1,
+      "title": "Bug de connexion",
+      "priority": "HAUTE",
+      "status": "TERMINE",
+      "creationDate": "2026-10-20",
+      "updateDate": "2026-10-20",
+      "creator": 2,
+      "assignedUser": 4,
+      "aDejaEteAssigne": true,
+      "comments": [
+        {
+          "texte": "Le bug se reproduit sur Chrome et Firefox.",
+          "auteur": 2,
+          "date": "2026-10-20"
+        },
+        {
+          "texte": "Capture d'écran jointe à la description.",
+          "auteur": 2,
+          "date": "2026-10-20"
+        }
+      ],
+      "description": [
+        {
+          "type": "texte_saisi",
+          "contenu": "Bug : impossible de se connecter à l'application.\nDepuis la dernière mise à jour, la page de connexion affiche « Identifiants invalides » même lorsque le nom d'utilisateur et le mot de passe sont corrects."
+        },
+        {
+          "type": "image",
+          "chemin": "donnees/images/demo_connexion.png"
+        }
+      ]
+    },
+    {
+      "ticketID": 2,
+      "title": "Erreur d'affichage mobile",
+      "priority": "MOYENNE",
+      "status": "ASSIGNE",
+      "creationDate": "2026-10-20",
+      "updateDate": "2026-10-20",
+      "creator": 2,
+      "assignedUser": 5,
+      "aDejaEteAssigne": true,
+      "comments": [],
+      "description": [
+        {
+          "type": "texte_saisi",
+          "contenu": "Sur téléphone, le tableau des tickets dépasse de l'écran et le menu cache le contenu."
+        },
+        {
+          "type": "image",
+          "chemin": "donnees/images/demo_affichage_mobile.png"
+        }
+      ]
+    },
+    {
+      "ticketID": 3,
+      "title": "Export CSV",
+      "priority": "BASSE",
+      "status": "FERME",
+      "creationDate": "2026-10-20",
+      "updateDate": "2026-10-20",
+      "creator": 3,
+      "assignedUser": null,
+      "aDejaEteAssigne": false,
+      "comments": [],
+      "description": [
+        {
+          "type": "texte_saisi",
+          "contenu": "Pouvoir exporter la liste des tickets au format CSV."
+        }
+      ]
+    },
+    {
+      "ticketID": 6,
+      "title": "Bouton Annuler inactif",
+      "priority": "MOYENNE",
+      "status": "OUVERT",
+      "creationDate": "2026-10-20",
+      "updateDate": "2026-10-20",
+      "creator": 3,
+      "assignedUser": null,
+      "aDejaEteAssigne": false,
+      "comments": [],
+      "description": [
+        {
+          "type": "texte_saisi",
+          "contenu": "Dans le formulaire de création, le bouton « Annuler » ne ferme pas la fenêtre."
+        }
+      ]
+    },
+    {
+      "ticketID": 7,
+      "title": "Lenteur de la recherche",
+      "priority": "HAUTE",
+      "status": "OUVERT",
+      "creationDate": "2026-10-20",
+      "updateDate": "2026-10-20",
+      "creator": 4,
+      "assignedUser": null,
+      "aDejaEteAssigne": false,
+      "comments": [],
+      "description": [
+        {
+          "type": "texte_saisi",
+          "contenu": "La recherche de tickets prend plus de dix secondes au-delà de mille tickets."
+        }
+      ]
+    },
+    {
+      "ticketID": 8,
+      "title": "Erreur 500 au paiement",
+      "priority": "CRITIQUE",
+      "status": "VALIDATION",
+      "creationDate": "2026-10-20",
+      "updateDate": "2026-10-20",
+      "creator": 5,
+      "assignedUser": 4,
+      "aDejaEteAssigne": true,
+      "comments": [],
+      "description": [
+        {
+          "type": "texte_saisi",
+          "contenu": "Le serveur renvoie une erreur 500 à la validation d'un paiement par carte."
+        },
+        {
+          "type": "image",
+          "chemin": "donnees/images/demo_paiement.png"
+        }
+      ]
+    },
+    {
+      "ticketID": 9,
+      "title": "Faute dans le menu Aide",
+      "priority": "BASSE",
+      "status": "ASSIGNE",
+      "creationDate": "2026-10-20",
+      "updateDate": "2026-10-20",
+      "creator": 3,
+      "assignedUser": 2,
+      "aDejaEteAssigne": true,
+      "comments": [],
+      "description": [
+        {
+          "type": "texte_saisi",
+          "contenu": "Le menu Aide affiche « Aide en lgine » au lieu de « Aide en ligne »."
+        }
+      ]
+    },
+    {
+      "ticketID": 10,
+      "title": "Notification en double",
+      "priority": "MOYENNE",
+      "status": "ASSIGNE",
+      "creationDate": "2026-10-20",
+      "updateDate": "2026-10-20",
+      "creator": 4,
+      "assignedUser": 3,
+      "aDejaEteAssigne": true,
+      "comments": [],
+      "description": [
+        {
+          "type": "texte_saisi",
+          "contenu": "Chaque nouveau commentaire envoie deux notifications identiques."
+        }
+      ]
+    }
+  ]
+}
