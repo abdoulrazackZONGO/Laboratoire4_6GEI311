@@ -1,0 +1,1155 @@
+openapi: 3.0.3
+
+info:
+  title: API du gestionnaire de tickets (Laboratoire 4, 6GEI311)
+  version: 1.0.0
+  description: |
+    API REST qui expose la couche métier du gestionnaire de tickets des laboratoires 2 et 3.
+    Le serveur Flask détient l'unique SystemeTickets ; la GUI Tkinter et la page web
+    (bonus) n'utilisent que cette API.
+
+    Conventions (séance 6 du cours) : collection au pluriel (/tickets), instance au
+    singulier avec un identifiant explicite (/ticket/{ticketId}) ; paramètre in url pour
+    désigner une instance, in query pour filtrer, in body pour créer ou modifier.
+    Une ressource qui en compose une autre est un sous-chemin de celle-ci. C'est
+    pourquoi les brouillons et les lots, créés par un acteur (principe Créateur), sont
+    rangés sous /acteur/{acteurId}.
+
+    Identification : chaque requête porte l'en-tête X-Acteur-Id, sauf celles marquées
+    sans sécurité (security: []). Il n'y a pas de mot de passe, comme au lab 3.
+
+    Règles communes :
+      - X-Acteur-Id absent, non entier ou inconnu : 401 ActeurNonIdentifie.
+      - Sous /acteur/{acteurId}/..., X-Acteur-Id doit être égal à {acteurId} : sinon 403.
+      - Les brouillons sont réservés aux User, les lots aux Admin : sinon 403.
+      - Une méthode absente sur un chemin existant : 405. Un chemin inconnu : 404.
+      - Toute réponse d'erreur suit le schéma Erreur.
+      - Les listes sont triées par identifiant croissant.
+
+    Les messages d'erreur métier sont ceux du modèle, tels quels. Ils parlent de
+    « session » (SessionEdition, SessionCreation) là où l'API parle de « brouillon » :
+    un brouillon est la ressource REST qui expose une session du modèle.
+
+    Les brouillons vivent en mémoire du serveur, comme les sessions au lab 3 : ils ne
+    sont pas sauvegardés et disparaissent au redémarrage. Les tickets, eux, sont
+    sauvegardés dans donnees/sauvegarde.json après chaque modification réussie.
+
+servers:
+  - url: http://127.0.0.1:5000
+    description: Serveur local (python serveur.py)
+
+tags:
+  - name: Acteurs
+  - name: Tickets
+  - name: Brouillons
+    description: Brouillons de création ou d'édition d'un ticket (sessions du modèle)
+  - name: Lots
+    description: Opérations groupées de l'Admin
+  - name: Système
+
+security:
+  - ActeurId: []
+
+paths:
+
+  # ------------------------------------------------------------------ acteurs
+
+  /acteurs:
+    get:
+      tags: [Acteurs]
+      summary: Tous les acteurs
+      description: |
+        Sert à la fenêtre de connexion (F1), avant qu'un acteur soit choisi, et au choix
+        de l'assigné dans un lot (F7, avec role=User).
+      operationId: listerActeurs
+      security: []
+      parameters:
+        - name: role
+          in: query
+          required: false
+          description: Ne garder que les acteurs de ce rôle.
+          schema:
+            $ref: '#/components/schemas/Role'
+      responses:
+        '200':
+          description: Liste des acteurs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Acteur'
+              example:
+                - { id: 2, nom: Abdoul Razack, courriel: abdoul@uqac.ca, role: User }
+                - { id: 3, nom: T Julien, courriel: julien@uqac.ca, role: User }
+        '400':
+          $ref: '#/components/responses/RequeteInvalide'
+
+  /acteur/{acteurId}:
+    get:
+      tags: [Acteurs]
+      summary: Un acteur
+      operationId: lireActeur
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/acteurId'
+      responses:
+        '200':
+          description: L'acteur.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Acteur'
+              example: { id: 1, nom: Ambroise Fleury, courriel: ambroise@uqac.ca, role: Admin }
+        '404':
+          $ref: '#/components/responses/Introuvable'
+
+  # ------------------------------------------------------------------ tickets
+
+  /tickets:
+    get:
+      tags: [Tickets]
+      summary: Tous les tickets du dépôt
+      description: |
+        Résumés de tous les tickets du dépôt, triés par identifiant. Les filtres se
+        combinent (ET). Un identifiant de créateur ou d'assigné qui ne correspond à
+        aucun acteur donne une liste vide, pas une erreur.
+        Usages : F2 (tous, filtre par statut), F3 onglet « Créés par moi » (createur),
+        onglet « Assignés à moi » (assigne).
+      operationId: listerTickets
+      parameters:
+        - name: statut
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Statut'
+        - name: createur
+          in: query
+          required: false
+          description: Identifiant de l'acteur créateur.
+          schema: { type: integer }
+        - name: assigne
+          in: query
+          required: false
+          description: Identifiant de l'assigné actuel (tickets TERMINE et FERME compris).
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Liste des résumés.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TicketResume'
+              examples:
+                ticket2:
+                  summary: Liste à un élément (filtre statut=ASSIGNE&createur=2)
+                  value:
+                    - id: 2
+                      titre: Erreur d'affichage mobile
+                      priorite: MOYENNE
+                      statut: ASSIGNE
+                      createur: { id: 2, nom: Abdoul Razack }
+                      assigne: { id: 5, nom: Hein Tommy }
+                      dateCreation: '2026-10-20'
+                      dateMiseAJour: '2026-10-20'
+                      dejaAssigne: true
+                      transitionsPermises: [OUVERT, ASSIGNE, VALIDATION, FERME]
+                      nombreCommentaires: 0
+        '400':
+          $ref: '#/components/responses/RequeteInvalide'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+
+    post:
+      tags: [Tickets]
+      summary: Créer un ticket en une requête
+      description: |
+        Raccourci pour la page web et les essais : ouvre une session de création,
+        y ajoute le texte saisi, puis l'applique. Pas d'image, pas de pause : la GUI
+        utilise les brouillons pour cela. Réservé aux User.
+        L'identifiant du ticket est attribué par le serveur (reserverIdentifiant()).
+      operationId: creerTicket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreationTicket'
+            example: { titre: Paiement refusé, priorite: HAUTE, texte: La carte est refusée sans message. }
+      responses:
+        '201':
+          description: Ticket créé.
+          headers:
+            Location:
+              description: URI du ticket créé.
+              schema: { type: string, example: /ticket/11 }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultatCreation'
+        '400':
+          $ref: '#/components/responses/RequeteInvalide'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+
+  /ticket/{ticketId}:
+    parameters:
+      - $ref: '#/components/parameters/ticketId'
+    get:
+      tags: [Tickets]
+      summary: Un ticket (détail complet)
+      description: Lecture commune aux deux rôles (fenêtre F6).
+      operationId: lireTicket
+      responses:
+        '200':
+          description: Le ticket avec ses commentaires et sa description.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketDetail'
+              examples:
+                ticket1:
+                  $ref: '#/components/examples/TicketDetail1'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+
+    patch:
+      tags: [Tickets]
+      summary: Changer l'état d'un ticket
+      description: |
+        Modification partielle : seul le statut (et l'assigné pour ASSIGNE) change.
+        Le statut demandé désigne l'action, qui appelle une méthode métier existante :
+
+        | statut     | méthode appelée              | rôle  |
+        |------------|------------------------------|-------|
+        | ASSIGNE    | Admin.assignTicket(t, user)  | Admin |
+        | OUVERT     | Admin.desassignerTicket(t)   | Admin |
+        | TERMINE    | Admin.validerTicket(t)       | Admin |
+        | FERME      | Admin.closeTicket(t)         | Admin |
+        | VALIDATION | User.soumettreValidation(t)  | User  |
+
+        ASSIGNE couvre l'assignation, la réassignation et le rejet d'une validation.
+        C'est l'état courant du ticket qui accepte ou refuse la transition (409 sinon).
+        La route ne recopie aucune règle de transition : elle laisse l'état décider.
+      operationId: changerStatut
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangementStatut'
+            examples:
+              assigner:
+                summary: Assigner le ticket à l'utilisateur 3
+                value: { statut: ASSIGNE, assigneId: 3 }
+              soumettre:
+                summary: Soumettre à validation (par l'assigné)
+                value: { statut: VALIDATION }
+              fermer:
+                summary: Fermer (action définitive)
+                value: { statut: FERME }
+      responses:
+        '200':
+          description: Le ticket à jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketDetail'
+        '400':
+          $ref: '#/components/responses/RequeteInvalide'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+        '409':
+          $ref: '#/components/responses/Conflit'
+
+    delete:
+      tags: [Tickets]
+      summary: Supprimer un ticket
+      description: |
+        User.supprimerTicket() : seulement par son créateur (403 sinon) et s'il n'a
+        jamais été assigné (409 SuppressionInterditeException sinon). Les copies
+        d'images de sa description sont aussi supprimées de donnees/images/.
+        Réservé aux User.
+      operationId: supprimerTicket
+      responses:
+        '204':
+          description: Ticket supprimé.
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+        '409':
+          $ref: '#/components/responses/Conflit'
+
+  /ticket/{ticketId}/commentaires:
+    get:
+      tags: [Tickets]
+      summary: Tous les commentaires d'un ticket
+      description: Les commentaires s'ajoutent par un brouillon d'édition, jamais directement.
+      operationId: listerCommentaires
+      parameters:
+        - $ref: '#/components/parameters/ticketId'
+      responses:
+        '200':
+          description: Commentaires dans l'ordre d'ajout.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Commentaire'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+
+  /ticket/{ticketId}/description:
+    get:
+      tags: [Tickets]
+      summary: Tous les éléments de la description d'un ticket
+      description: Les éléments s'ajoutent par un brouillon, jamais directement.
+      operationId: lireDescription
+      parameters:
+        - $ref: '#/components/parameters/ticketId'
+      responses:
+        '200':
+          description: Éléments dans l'ordre d'ajout.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ElementDescription'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+
+  /ticket/{ticketId}/image/{nomImage}:
+    get:
+      tags: [Tickets]
+      summary: Une image de la description d'un ticket
+      description: |
+        Sans identification, pour qu'une balise <img> de la page web puisse l'afficher.
+        Seule une image qui appartient à la description de ce ticket est servie : un nom
+        quelconque (par exemple avec ../) donne 404. Le chemin disque n'est jamais exposé.
+      operationId: lireImage
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ticketId'
+        - name: nomImage
+          in: path
+          required: true
+          description: Nom du fichier tel que donné par le champ url de l'élément.
+          schema: { type: string, example: demo_connexion.png }
+      responses:
+        '200':
+          description: Les octets de l'image.
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+            image/gif:
+              schema: { type: string, format: binary }
+        '404':
+          $ref: '#/components/responses/Introuvable'
+
+  # ------------------------------------------------------------------ brouillons
+
+  /acteur/{acteurId}/brouillons:
+    parameters:
+      - $ref: '#/components/parameters/acteurId'
+    get:
+      tags: [Brouillons]
+      summary: Tous les brouillons ouverts de l'acteur
+      description: |
+        User.sessionsOuvertes : brouillons de création (onglet « Brouillons » de F3) et
+        brouillons d'édition (colonne « Édition » de F3), en pause ou non.
+      operationId: listerBrouillons
+      responses:
+        '200':
+          description: Brouillons ouverts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Brouillon'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+
+    post:
+      tags: [Brouillons]
+      summary: Ouvrir un brouillon de création ou d'édition
+      description: |
+        creation : réserve un identifiant de ticket, crée le ticket hors du dépôt et
+        appelle User.ouvrirSessionCreation(). Le ticket n'existera pour les autres
+        qu'à l'application.
+        edition : appelle User.ouvrirSessionEdition(ticket). Seul le créateur peut
+        éditer (403), et un seul brouillon peut être ouvert par ticket (409). Pour
+        reprendre un brouillon d'édition existant, le client le retrouve dans
+        GET /acteur/{acteurId}/brouillons puis le reprend par PATCH.
+      operationId: ouvrirBrouillon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OuvertureBrouillon'
+            examples:
+              creation:
+                value: { type: creation, titre: Paiement refusé, priorite: MOYENNE }
+              edition:
+                value: { type: edition, ticketId: 6 }
+      responses:
+        '201':
+          description: Brouillon ouvert.
+          headers:
+            Location:
+              schema: { type: string, example: /acteur/3/brouillon/1 }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brouillon'
+              examples:
+                creation:
+                  $ref: '#/components/examples/BrouillonCreation'
+        '400':
+          $ref: '#/components/responses/RequeteInvalide'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+        '409':
+          $ref: '#/components/responses/Conflit'
+
+  /acteur/{acteurId}/brouillon/{brouillonId}:
+    parameters:
+      - $ref: '#/components/parameters/acteurId'
+      - $ref: '#/components/parameters/brouillonId'
+    get:
+      tags: [Brouillons]
+      summary: Un brouillon
+      description: Un brouillon appliqué ou abandonné n'existe plus (404).
+      operationId: lireBrouillon
+      responses:
+        '200':
+          description: Le brouillon.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brouillon'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+
+    patch:
+      tags: [Brouillons]
+      summary: Mettre en pause, reprendre, garder le texte tapé
+      description: |
+        Le texte brouillon est enregistré d'abord, puis la pause est appliquée.
+        enPause true appelle mettreEnPause(), false appelle reprendre().
+        Demander l'état déjà en vigueur est refusé par le modèle (409).
+        Au moins un des deux champs est obligatoire.
+      operationId: modifierBrouillon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModificationBrouillon'
+            examples:
+              pause:
+                value: { enPause: true, texteBrouillon: Le paiement échoue depuis lundi. }
+              reprise:
+                value: { enPause: false }
+      responses:
+        '200':
+          description: Le brouillon à jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brouillon'
+        '400':
+          $ref: '#/components/responses/RequeteInvalide'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+        '409':
+          $ref: '#/components/responses/Conflit'
+
+    delete:
+      tags: [Brouillons]
+      summary: Abandonner un brouillon
+      description: |
+        abandonner() : la pile est vidée et le ticket reste inchangé (ou n'est pas créé).
+        Les copies d'images ajoutées par ce brouillon sont supprimées. Permis en pause.
+      operationId: abandonnerBrouillon
+      responses:
+        '204':
+          description: Brouillon abandonné.
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+        '409':
+          $ref: '#/components/responses/Conflit'
+
+  /acteur/{acteurId}/brouillon/{brouillonId}/modifications:
+    parameters:
+      - $ref: '#/components/parameters/acteurId'
+      - $ref: '#/components/parameters/brouillonId'
+    get:
+      tags: [Brouillons]
+      summary: Toutes les modifications en attente
+      operationId: listerModifications
+      responses:
+        '200':
+          description: Libellés des modifications en attente, dans l'ordre d'ajout.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+              example:
+                - Ajouter l'élément [Image] capture.png (2048 octets) au ticket #11
+                - Ajouter le commentaire « Testé sur Firefox aussi. » au ticket #11
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+
+    post:
+      tags: [Brouillons]
+      summary: Ajouter une modification en attente
+      description: |
+        commentaire : ajouterCommentaire(texte).
+        texte : ajouterTexteSaisi(texte) ; un texte vide est refusé (400 ArtefactInvalideException).
+        image : le serveur décode le base64, enregistre une copie .png ou .gif sous un nom
+        unique (StockageImages), puis ajouterElement("image", copie). Un autre format est
+        refusé (400) et ne laisse aucune copie.
+        Refusé si le brouillon est en pause (409).
+      operationId: ajouterModification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NouvelleModification'
+            examples:
+              commentaire:
+                value: { type: commentaire, texte: Testé sur Firefox aussi. }
+              texte:
+                value: { type: texte, texte: La carte est refusée sans message d'erreur. }
+              image:
+                value: { type: image, nomFichier: capture.png, contenuBase64: iVBORw0KGgoAAAANSUhEUgAA... }
+      responses:
+        '201':
+          description: Modification ajoutée ; le brouillon à jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brouillon'
+        '400':
+          $ref: '#/components/responses/RequeteInvalide'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+        '409':
+          $ref: '#/components/responses/Conflit'
+        '413':
+          $ref: '#/components/responses/TropVolumineux'
+
+  /acteur/{acteurId}/brouillon/{brouillonId}/modification/derniere:
+    delete:
+      tags: [Brouillons]
+      summary: Annuler le dernier ajout (undo)
+      description: |
+        annulerDerniere() : retire la dernière modification en attente. Si c'était une
+        image, sa copie est supprimée. Refusé en pause ou sans modification (409).
+      operationId: annulerDerniereModification
+      parameters:
+        - $ref: '#/components/parameters/acteurId'
+        - $ref: '#/components/parameters/brouillonId'
+      responses:
+        '200':
+          description: Libellé retiré et brouillon à jour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultatAnnulation'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+        '409':
+          $ref: '#/components/responses/Conflit'
+
+  /acteur/{acteurId}/brouillon/{brouillonId}/application:
+    post:
+      tags: [Brouillons]
+      summary: Appliquer un brouillon
+      description: |
+        Si texte est fourni et non vide, il est d'abord ajouté comme texte saisi. Si
+        l'application est ensuite refusée, ce texte est retiré, pour ne pas être ajouté
+        deux fois au prochain essai (même logique que ControleurEdition.appliquer au lab 3).
+        Le brouillon est appliqué « au mieux » : une modification refusée figure dans le
+        rapport et ne bloque pas les suivantes. Le brouillon disparaît ensuite.
+        Création : le ticket entre dans le dépôt, réponse 201 avec Location.
+        Édition : réponse 200.
+      operationId: appliquerBrouillon
+      parameters:
+        - $ref: '#/components/parameters/acteurId'
+        - $ref: '#/components/parameters/brouillonId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Application'
+            example: { texte: La carte est refusée sans message d'erreur. }
+      responses:
+        '200':
+          description: Brouillon d'édition appliqué.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RapportExecution'
+        '201':
+          description: Brouillon de création appliqué ; le ticket est dans le dépôt.
+          headers:
+            Location:
+              schema: { type: string, example: /ticket/11 }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RapportExecution'
+              examples:
+                creation:
+                  $ref: '#/components/examples/RapportCreation'
+        '400':
+          $ref: '#/components/responses/RequeteInvalide'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+        '409':
+          $ref: '#/components/responses/Conflit'
+
+  # ------------------------------------------------------------------ lots
+
+  /acteur/{acteurId}/lots:
+    post:
+      tags: [Lots]
+      summary: Appliquer une action à plusieurs tickets (Admin)
+      description: |
+        Admin.ouvrirLot(), une opération LotAdmin par ticket, puis appliquer().
+        Appliqué « au mieux » : un refus figure dans le rapport et ne bloque pas les
+        autres tickets ; la réponse reste 200. Le lot n'est pas conservé : il n'y a donc
+        pas de GET sur ce chemin (405).
+        Tous les identifiants sont vérifiés avant d'appliquer quoi que ce soit : un
+        ticket inconnu donne 404 et rien n'est modifié.
+        L'aperçu de la fenêtre F7 se construit côté client, puisqu'il ne modifie rien.
+      operationId: appliquerLot
+      parameters:
+        - $ref: '#/components/parameters/acteurId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Lot'
+            examples:
+              assigner:
+                value: { action: assigner, ticketIds: [6, 7, 3], assigneId: 4 }
+              fermer:
+                value: { action: fermer, ticketIds: [6] }
+      responses:
+        '200':
+          description: Rapport d'exécution du lot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RapportExecution'
+              examples:
+                lot:
+                  $ref: '#/components/examples/RapportLot'
+        '400':
+          $ref: '#/components/responses/RequeteInvalide'
+        '401':
+          $ref: '#/components/responses/NonIdentifie'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '404':
+          $ref: '#/components/responses/Introuvable'
+
+  # ------------------------------------------------------------------ système
+
+  /version:
+    get:
+      tags: [Système]
+      summary: Compteur de modifications du dépôt
+      description: |
+        Incrémenté par un observateur abonné au SystemeTickets à chaque ajout, retrait
+        ou modification d'un ticket. Les clients l'interrogent environ toutes les
+        secondes et ne relisent les tickets que s'il a changé : c'est ce qui remplace
+        le patron Observateur entre deux processus.
+      operationId: lireVersion
+      security: []
+      responses:
+        '200':
+          description: Version courante.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version]
+                properties:
+                  version: { type: integer, minimum: 0 }
+              example: { version: 42 }
+
+components:
+
+  securitySchemes:
+    ActeurId:
+      type: apiKey
+      in: header
+      name: X-Acteur-Id
+      description: Identifiant entier de l'acteur qui fait la requête.
+
+  parameters:
+    acteurId:
+      name: acteurId
+      in: path
+      required: true
+      schema: { type: integer, example: 3 }
+    ticketId:
+      name: ticketId
+      in: path
+      required: true
+      schema: { type: integer, example: 2 }
+    brouillonId:
+      name: brouillonId
+      in: path
+      required: true
+      description: Attribué par le serveur ; unique tant que le serveur tourne.
+      schema: { type: integer, example: 1 }
+
+  schemas:
+
+    Role:
+      type: string
+      enum: [User, Admin]
+
+    Statut:
+      type: string
+      enum: [OUVERT, ASSIGNE, VALIDATION, TERMINE, FERME]
+
+    Priorite:
+      type: string
+      enum: [BASSE, MOYENNE, HAUTE, CRITIQUE]
+
+    Acteur:
+      type: object
+      required: [id, nom, courriel, role]
+      properties:
+        id: { type: integer }
+        nom: { type: string }
+        courriel: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+
+    ActeurRef:
+      type: object
+      description: Référence courte à un acteur, dans un ticket ou un commentaire.
+      required: [id, nom]
+      properties:
+        id: { type: integer }
+        nom: { type: string }
+
+    TicketResume:
+      type: object
+      required: [id, titre, priorite, statut, createur, assigne, dateCreation,
+                 dateMiseAJour, dejaAssigne, transitionsPermises, nombreCommentaires]
+      properties:
+        id: { type: integer }
+        titre: { type: string }
+        priorite: { $ref: '#/components/schemas/Priorite' }
+        statut: { $ref: '#/components/schemas/Statut' }
+        createur:
+          allOf: [{ $ref: '#/components/schemas/ActeurRef' }]
+          nullable: true
+        assigne:
+          allOf: [{ $ref: '#/components/schemas/ActeurRef' }]
+          nullable: true
+          description: Assigné actuel ; conservé sur un ticket TERMINE ou FERME.
+        dateCreation: { type: string, format: date }
+        dateMiseAJour: { type: string, format: date }
+        dejaAssigne:
+          type: boolean
+          description: Vrai si le ticket a déjà été assigné une fois (il n'est alors plus supprimable).
+        transitionsPermises:
+          type: array
+          description: |
+            Ticket.transitionsPermises, dans l'ordre de l'enum Statut. Les clients s'en
+            servent pour griser les boutons sans recopier les règles des états.
+          items: { $ref: '#/components/schemas/Statut' }
+        nombreCommentaires: { type: integer, minimum: 0 }
+
+    TicketDetail:
+      allOf:
+        - $ref: '#/components/schemas/TicketResume'
+        - type: object
+          required: [commentaires, description]
+          properties:
+            commentaires:
+              type: array
+              items: { $ref: '#/components/schemas/Commentaire' }
+            description:
+              type: array
+              items: { $ref: '#/components/schemas/ElementDescription' }
+
+    Commentaire:
+      type: object
+      required: [texte, auteur, date]
+      properties:
+        texte: { type: string }
+        auteur: { $ref: '#/components/schemas/ActeurRef' }
+        date: { type: string, format: date }
+
+    ElementDescription:
+      type: object
+      description: |
+        Un élément de la description. Les champs présents dépendent du type :
+        texte_saisi et texte ont contenu ; image a url ; video n'a que resume.
+      required: [type, nom, resume]
+      properties:
+        type:
+          type: string
+          enum: [texte_saisi, texte, image, video]
+        nom:
+          type: string
+          description: Nom du fichier, ou « texte saisi ».
+        resume:
+          type: string
+          description: Résumé lisible produit par le modèle (ElementDescription.resume).
+        contenu:
+          type: string
+          description: Texte de l'élément (texte_saisi et texte seulement).
+        url:
+          type: string
+          description: URI de l'image (image seulement), de la forme /ticket/{ticketId}/image/{nomImage}.
+
+    CreationTicket:
+      type: object
+      required: [titre, priorite, texte]
+      properties:
+        titre: { type: string, minLength: 1, description: 'Non vide après suppression des espaces.' }
+        priorite: { $ref: '#/components/schemas/Priorite' }
+        texte: { type: string, minLength: 1, description: 'Texte de la description ; non vide.' }
+
+    ResultatCreation:
+      type: object
+      required: [ticket, rapport]
+      properties:
+        ticket: { $ref: '#/components/schemas/TicketDetail' }
+        rapport: { $ref: '#/components/schemas/RapportExecution' }
+
+    ChangementStatut:
+      type: object
+      required: [statut]
+      properties:
+        statut: { $ref: '#/components/schemas/Statut' }
+        assigneId:
+          type: integer
+          description: Obligatoire si statut vaut ASSIGNE, interdit sinon. Doit désigner un User.
+
+    Brouillon:
+      type: object
+      required: [id, type, libelle, ticket, proprietaire, ouverte, enPause,
+                 modificationsEnAttente, nombreImages, texteBrouillon]
+      properties:
+        id: { type: integer, description: brouillonId }
+        type:
+          type: string
+          enum: [creation, edition]
+        libelle:
+          type: string
+          description: Libellé du modèle (« Session de création » ou « Session d'édition »).
+        ticket:
+          type: object
+          required: [id, titre, priorite]
+          description: Ticket visé ; pour une création, il n'est pas encore dans le dépôt.
+          properties:
+            id: { type: integer }
+            titre: { type: string }
+            priorite: { $ref: '#/components/schemas/Priorite' }
+        proprietaire: { $ref: '#/components/schemas/ActeurRef' }
+        ouverte: { type: boolean }
+        enPause: { type: boolean }
+        modificationsEnAttente:
+          type: array
+          items: { type: string }
+        nombreImages:
+          type: integer
+          minimum: 0
+          description: Images en attente (F5 grise « Créer le ticket » sans texte ni image).
+        texteBrouillon:
+          type: string
+          description: Texte tapé dans F5 et gardé pendant la pause ; n'est pas encore une modification.
+
+    OuvertureBrouillon:
+      type: object
+      required: [type]
+      description: creation exige titre et priorite ; edition exige ticketId.
+      properties:
+        type:
+          type: string
+          enum: [creation, edition]
+        titre: { type: string, minLength: 1 }
+        priorite: { $ref: '#/components/schemas/Priorite' }
+        ticketId: { type: integer }
+
+    ModificationBrouillon:
+      type: object
+      minProperties: 1
+      properties:
+        enPause: { type: boolean }
+        texteBrouillon: { type: string }
+
+    NouvelleModification:
+      type: object
+      required: [type]
+      description: |
+        commentaire et texte exigent texte ; image exige nomFichier (.png ou .gif)
+        et contenuBase64.
+      properties:
+        type:
+          type: string
+          enum: [commentaire, texte, image]
+        texte: { type: string }
+        nomFichier: { type: string, example: capture.png }
+        contenuBase64:
+          type: string
+          format: byte
+          description: Octets du fichier encodés en base64 (5 Mo au plus une fois décodés).
+
+    ResultatAnnulation:
+      type: object
+      required: [libelleRetire, brouillon]
+      properties:
+        libelleRetire: { type: string }
+        brouillon: { $ref: '#/components/schemas/Brouillon' }
+
+    Application:
+      type: object
+      properties:
+        texte:
+          type: string
+          description: Texte tapé dans F5, ajouté comme texte saisi juste avant l'application.
+
+    Lot:
+      type: object
+      required: [action, ticketIds]
+      properties:
+        action:
+          type: string
+          enum: [assigner, desassigner, valider, fermer]
+        ticketIds:
+          type: array
+          minItems: 1
+          items: { type: integer }
+        assigneId:
+          type: integer
+          description: Obligatoire pour assigner, interdit sinon. Doit désigner un User.
+
+    RapportExecution:
+      type: object
+      required: [libelle, succes, refus, nombreSucces, nombreRefus, ticketId]
+      properties:
+        libelle: { type: string }
+        succes:
+          type: array
+          items: { type: string }
+        refus:
+          type: array
+          items:
+            type: object
+            required: [operation, motif]
+            properties:
+              operation: { type: string }
+              motif: { type: string }
+        nombreSucces: { type: integer }
+        nombreRefus: { type: integer }
+        ticketId:
+          type: integer
+          nullable: true
+          description: Ticket créé (application d'un brouillon de création) ; null sinon.
+
+    Erreur:
+      type: object
+      required: [erreur]
+      properties:
+        erreur:
+          type: object
+          required: [type, message]
+          properties:
+            type:
+              type: string
+              description: |
+                Nom de l'exception métier (TransitionInvalideException,
+                SessionIndisponibleException, SuppressionInterditeException,
+                AccesRefuseException, ArtefactInvalideException) ou de l'erreur propre
+                à l'API (RequeteInvalide, ActeurNonIdentifie, RessourceIntrouvable,
+                MethodeNonPermise, RequeteTropVolumineuse, ErreurInterne).
+            message:
+              type: string
+              description: Message du modèle, tel quel ; message générique pour une erreur 500.
+
+  responses:
+    RequeteInvalide:
+      description: |
+        Corps JSON illisible ou absent, champ manquant ou en trop, enum ou type invalide
+        (RequeteInvalide), ou artefact refusé par le modèle (ArtefactInvalideException).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erreur' }
+          example:
+            erreur: { type: RequeteInvalide, message: "Champ obligatoire manquant : statut" }
+    NonIdentifie:
+      description: En-tête X-Acteur-Id absent, non entier ou inconnu.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erreur' }
+          example:
+            erreur: { type: ActeurNonIdentifie, message: "En-tête X-Acteur-Id absent" }
+    AccesRefuse:
+      description: |
+        Refus du modèle (AccesRefuseException), mauvais rôle pour l'opération, ou
+        {acteurId} du chemin différent de X-Acteur-Id.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erreur' }
+          example:
+            erreur: { type: AccesRefuseException, message: "T Julien n'est pas le créateur du ticket 2" }
+    Introuvable:
+      description: Acteur, ticket, brouillon ou image introuvable.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erreur' }
+          example:
+            erreur: { type: RessourceIntrouvable, message: "Ticket introuvable : 99" }
+    Conflit:
+      description: |
+        La requête est bien formée, mais l'état actuel l'interdit :
+        TransitionInvalideException, SessionIndisponibleException ou
+        SuppressionInterditeException.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erreur' }
+          example:
+            erreur:
+              type: TransitionInvalideException
+              message: "Transition invalide : impossible de passer de l'état TERMINE au statut FERME"
+    TropVolumineux:
+      description: Corps de requête au-delà de la limite du serveur.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erreur' }
+          example:
+            erreur: { type: RequeteTropVolumineuse, message: "Requête trop volumineuse (8 Mo au plus)" }
+
+  examples:
+    TicketDetail1:
+      value:
+        id: 1
+        titre: Bug de connexion
+        priorite: HAUTE
+        statut: TERMINE
+        createur: { id: 2, nom: Abdoul Razack }
+        assigne: { id: 4, nom: Mike Tonny }
+        dateCreation: '2026-10-20'
+        dateMiseAJour: '2026-10-20'
+        dejaAssigne: true
+        transitionsPermises: []
+        nombreCommentaires: 2
+        commentaires:
+          - texte: Le bug se reproduit sur Chrome et Firefox.
+            auteur: { id: 2, nom: Abdoul Razack }
+            date: '2026-10-20'
+          - texte: Capture d'écran jointe à la description.
+            auteur: { id: 2, nom: Abdoul Razack }
+            date: '2026-10-20'
+        description:
+          - type: texte_saisi
+            nom: texte saisi
+            resume: "[Texte] texte saisi (205 caractères)"
+            contenu: "Bug : impossible de se connecter à l'application.\nDepuis la dernière mise à jour, la page de connexion affiche « Identifiants invalides » même lorsque le nom d'utilisateur et le mot de passe sont corrects."
+          - type: image
+            nom: demo_connexion.png
+            resume: "[Image] demo_connexion.png (757 octets)"
+            url: /ticket/1/image/demo_connexion.png
+    BrouillonCreation:
+      value:
+        id: 1
+        type: creation
+        libelle: Session de création
+        ticket: { id: 11, titre: Paiement refusé, priorite: MOYENNE }
+        proprietaire: { id: 3, nom: T Julien }
+        ouverte: true
+        enPause: false
+        modificationsEnAttente: []
+        nombreImages: 0
+        texteBrouillon: ''
+    RapportCreation:
+      value:
+        libelle: Session de création
+        succes:
+          - "Ajouter l'élément [Texte] texte saisi (43 caractères) au ticket #11"
+        refus: []
+        nombreSucces: 1
+        nombreRefus: 0
+        ticketId: 11
+    RapportLot:
+      value:
+        libelle: Lot administrateur
+        succes:
+          - "Assigner le ticket #6 à Mike Tonny"
+          - "Assigner le ticket #7 à Mike Tonny"
+        refus:
+          - operation: "Assigner le ticket #3 à Mike Tonny"
+            motif: "Transition invalide : impossible de passer de l'état FERME au statut ASSIGNE"
+        nombreSucces: 2
+        nombreRefus: 1
+        ticketId: null
