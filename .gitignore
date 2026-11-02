@@ -16,3 +16,6 @@ donnees/images/*
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Environnement virtuel Python
+.venv/
