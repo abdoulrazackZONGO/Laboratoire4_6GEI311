@@ -22,15 +22,43 @@ class SystemeTickets(SujetTickets, ObservateurTickets):
         super().__init__()
         self._tickets: list[Ticket] = []
         self._utilisateurs: list[UtilisateurSysteme] = []
+        # Plus grand identifiant ajouté ou réservé : il ne redescend jamais, pour qu'un
+        # identifiant retiré ou abandonné ne soit pas redonné à un autre ticket.
+        self._plusGrandIdentifiant: int = 0
 
     @property
     def tickets(self) -> list[Ticket]:
         return list(self._tickets)
 
     def ajouterTicket(self, ticket: Ticket) -> None:
+        """Un identifiant déjà présent dans le dépôt est refusé, avant toute notification."""
+        existant = self.ticketParId(ticket.ticketID)
+        if existant is not None:
+            raise ValueError(
+                f"Identifiant de ticket déjà utilisé : {ticket.ticketID} ({existant.title})"
+            )
         self._tickets.append(ticket)
+        self._plusGrandIdentifiant = max(self._plusGrandIdentifiant, ticket.ticketID)
         ticket.abonner(self)
         self._notifierAjout(ticket)
+
+    def ticketParId(self, id: int) -> Ticket | None:
+        """Ticket du dépôt ; un ticket de création pas encore appliquée n'y est pas."""
+        for ticket in self._tickets:
+            if ticket.ticketID == id:
+                return ticket
+        return None
+
+    def reserverIdentifiant(self) -> int:
+        """Identifiant d'un ticket à créer, jamais donné deux fois par ce système.
+
+        La réservation est mémorisée : deux créations ouvertes en même temps reçoivent
+        deux identifiants distincts, même si aucune n'est encore appliquée. Une création
+        abandonnée laisse un trou dans la numérotation. Méthode non synchronisée : le
+        serveur l'appelle sous son verrou.
+        """
+        self._plusGrandIdentifiant += 1
+        return self._plusGrandIdentifiant
 
     def retirerTicket(self, ticket: Ticket) -> None:
         self._tickets.remove(ticket)
