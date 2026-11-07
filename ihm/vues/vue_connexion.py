@@ -18,7 +18,7 @@ class VueConnexion(FenetreBase):
 
     def __init__(self, parent: tk.Misc, principal: ControleurPrincipal) -> None:
         # Aucun sujet : l'annuaire ne change pas pendant l'exécution.
-        super().__init__(parent, "Gestion des tickets — Connexion", [])
+        super().__init__(parent, "Gestion des tickets : Connexion", [])
         self._principal: ControleurPrincipal = principal
         self._acteurs: dict[str, ActeurLu] = {}
         # Quitter la connexion, c'est quitter l'application.

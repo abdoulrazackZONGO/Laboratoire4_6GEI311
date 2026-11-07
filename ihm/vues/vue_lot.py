@@ -33,7 +33,7 @@ class VueLot(FenetreBase):
         self, parent: tk.Misc, controleur: ControleurAdmin, action: str, tickets: list[TicketLu]
     ) -> None:
         super().__init__(
-            parent, "Gestion des tickets — Confirmation du lot", [controleur.source]
+            parent, "Gestion des tickets - Confirmation du lot", [controleur.source]
         )
         self._controleur: ControleurAdmin = controleur
         self._action: str = action

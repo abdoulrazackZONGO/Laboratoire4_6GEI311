@@ -41,7 +41,7 @@ class VueListeUser(FenetreBase):
 
     def __init__(self, parent: tk.Misc, controleur: ControleurUser) -> None:
         super().__init__(
-            parent, f"Gestion des tickets — {controleur.user.name} (User)",
+            parent, f"Gestion des tickets - {controleur.user.name} (User)",
             [controleur.source],
         )
         self._controleur: ControleurUser = controleur
@@ -125,7 +125,7 @@ class VueListeUser(FenetreBase):
         # Le ticket d'un brouillon de création n'est pas encore dans le dépôt : ni statut
         # ni assigné.
         lignes["brouillons"] = [
-            (brouillon.ticket, "BROUILLON", "—", self._etatBrouillon(brouillon))
+            (brouillon.ticket, "BROUILLON", "-", self._etatBrouillon(brouillon))
             for brouillon in controleur.brouillons()
         ]
         for onglet, texte in ONGLETS:
@@ -141,7 +141,7 @@ class VueListeUser(FenetreBase):
                     "", "end", iid=identifiant,
                     values=(
                         ticket.ticketID, ticket.title, ticket.priority.name,
-                        statut, assigne, edition or "—",
+                        statut, assigne, edition or "-",
                     ),
                 )
                 tickets[identifiant] = ticket
@@ -152,7 +152,7 @@ class VueListeUser(FenetreBase):
 
     @staticmethod
     def _nomAssigne(ticket: TicketLu) -> str:
-        return ticket.assignedUser.name if ticket.assignedUser is not None else "—"
+        return ticket.assignedUser.name if ticket.assignedUser is not None else "-"
 
     @staticmethod
     def _etatBrouillon(brouillon: BrouillonLu) -> str:

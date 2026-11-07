@@ -323,7 +323,7 @@ systeme = depot.charger()
 
 ### Patrons de conception
 
-#### State — `etats/`, `modele/ticket.py`
+#### State - `etats/`, `modele/ticket.py`
 
 Le statut d'un ticket n'est pas stocké : la propriété `status` (en lecture seule) est dérivée de l'état courant. `Ticket.updateStatus()` délègue entièrement la décision à l'état, qui accepte la transition (en instanciant le nouvel état) ou lève `TransitionInvalideException`.
 
@@ -337,17 +337,17 @@ Le statut d'un ticket n'est pas stocké : la propriété `status` (en lecture se
 
 Chaque état déclare aussi les statuts qu'il accepte dans `transitionsPermises`. `Ticket.transitionPossible(statut)` permet ainsi de savoir si une transition serait acceptée sans la tenter et sans recopier les règles ailleurs. Comme ces règles sont écrites à deux endroits (`transitionsPermises` les annonce, `gererTransition()` les applique), un test essaie chaque état avec chaque statut et vérifie que les deux disent la même chose.
 
-#### Template Method — `description/element_description.py`
+#### Template Method - `description/element_description.py`
 
 `ElementDescription.traiter()` (marquée `@typing.final`) fixe l'ordre des étapes : `validerChemin()` → `charger()` → `preparerAffichage()`. `charger()` varie selon le type d'artefact (texte, image, vidéo) ; faute de fichier, `DescriptionTexteSaisi` (texte tapé par l'utilisateur) redéfinit aussi `validerChemin()`, qui refuse un texte vide, et `preparerAffichage()`, qui affiche le nom « texte saisi ». `DescriptionVideo` pratique le **chargement différé** : `charger()` ne lit que la taille du fichier, et le contenu n'est lu que par `chargerContenuReel()`.
 
-#### Factory Method — `description/fabrique_description.py`, `etats/fabrique_etat.py`
+#### Factory Method - `description/fabrique_description.py`, `etats/fabrique_etat.py`
 
 `FabriqueDescription.creer(type_artefact, chemin)` crée l'élément voulu (`"texte"`, `"image"`, `"video"`) sans le charger ; tout autre type lève `ArtefactInvalideException`. `FabriqueDescription.creerSaisie(texte)` crée de même, sans le charger, un élément à partir d'un texte tapé par l'utilisateur, sans fichier. La fabrique est le seul endroit du programme qui connaît les sous-classes concrètes.
 
 `FabriqueEtat.creer(statut)` joue le même rôle pour les états : au chargement d'une sauvegarde, elle construit l'état qui correspond au statut enregistré. Un test vérifie que chaque valeur de `Statut` a son état.
 
-#### Command — `commandes/`, `sessions/`
+#### Command - `commandes/`, `sessions/`
 
 Les modifications sont empilées sous forme de commandes dans une session, puis appliquées d'un coup par `appliquer()`, qui retourne un `RapportExecution`. L'application se fait « au mieux » : une commande refusée ne bloque pas les suivantes, et une commande dont le ticket a été retiré du dépôt est refusée avec le motif « ticket retiré du dépôt ».
 
@@ -357,7 +357,7 @@ Les modifications sont empilées sous forme de commandes dans une session, puis 
 
 Dans une session d'édition, `annulerDerniere()` défait seulement la dernière modification en attente (undo), alors que `abandonner()` renonce à toute la session : la pile est vidée, la session est fermée et le ticket reste inchangé.
 
-#### Observateur — `modele/observateur.py`, `modele/ticket.py`, `modele/systeme_tickets.py`
+#### Observateur - `modele/observateur.py`, `modele/ticket.py`, `modele/systeme_tickets.py`
 
 `ObservateurTickets` est l'interface des observateurs : ses méthodes `ticketModifie`, `ticketAjoute` et `ticketRetire` ne font rien par défaut, et chaque observateur ne redéfinit que celles qui l'intéressent. `SujetTickets` tient la liste des abonnés (`abonner()`, `desabonner()`) et les notifie.
 
@@ -388,12 +388,12 @@ Le diagramme de la Partie 2 corrige les défauts de la Partie 1 et ajoute les se
 | Suppression d'un ticket, seulement par son créateur et s'il n'a jamais été assigné | User | N |
 | Consultation : `mesTickets()` avec ou sans filtre, `viewTicket()`, `viewAllTickets()` | User, Admin | B, C, G, Q |
 | Session d'édition : modifications en attente, annulation, pause et reprise, application groupée avec rapport | User | D, E, F, G, H |
-| Session de création : le ticket n'entre dans le dépôt qu'à l'application de sa description | User | — (tests unitaires) |
-| Une seule session ouverte par ticket, de nouveau permise après application ou abandon | User | — (tests unitaires) |
-| Consultation des tickets assignés à un utilisateur | User | — (tests unitaires) |
-| Transitions permises consultables sans modifier le ticket | — | — (tests unitaires) |
-| Notification des observateurs à chaque modification d'un ticket, relayée par le dépôt | — | — (tests unitaires) |
-| Sauvegarde et rechargement du système en JSON | — | — (tests unitaires) |
+| Session de création : le ticket n'entre dans le dépôt qu'à l'application de sa description | User | - (tests unitaires) |
+| Une seule session ouverte par ticket, de nouveau permise après application ou abandon | User | - (tests unitaires) |
+| Consultation des tickets assignés à un utilisateur | User | - (tests unitaires) |
+| Transitions permises consultables sans modifier le ticket | - | - (tests unitaires) |
+| Notification des observateurs à chaque modification d'un ticket, relayée par le dépôt | - | - (tests unitaires) |
+| Sauvegarde et rechargement du système en JSON | - | - (tests unitaires) |
 | Description multimédia (texte, image, vidéo) avec chargement différé de la vidéo | User | D, G |
 | Cycle de vie contrôlé par une machine à états | Admin, User | J, K, O |
 | Réassignation directe et rejet d'une validation | Admin | L |
@@ -401,7 +401,7 @@ Le diagramme de la Partie 2 corrige les défauts de la Partie 1 et ajoute les se
 | Fermeture et états terminaux | Admin | O |
 | Lot administrateur appliqué « au mieux » | Admin | P |
 | Contrôles d'accès (créateur, assigné, rôle) | User, Admin | I, K, N, Q |
-| Statut en lecture seule | — | Q |
+| Statut en lecture seule | - | Q |
 
 ### Démonstration (captures d'écran)
 
