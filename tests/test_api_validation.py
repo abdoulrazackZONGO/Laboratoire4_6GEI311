@@ -10,7 +10,16 @@ from typing import Any
 from flask import Flask
 
 from api.erreurs import RequeteInvalide
-from api.validation import booleen, chaineNonVide, entier, enumParNom, lireCorps, verifierChamps
+from api.validation import (
+    booleen,
+    chaineNonVide,
+    entier,
+    enumParNom,
+    lireCorps,
+    lireParametres,
+    parametreEntier,
+    verifierChamps,
+)
 from modele.enums import Priorite, Statut
 
 
@@ -108,6 +117,43 @@ class TestTypes(unittest.TestCase):
                     f"Valeur invalide pour champ : {valeur!r} "
                     "(attendu : OUVERT, ASSIGNE, VALIDATION, TERMINE, FERME)",
                 )
+
+
+class TestParametres(unittest.TestCase):
+    def setUp(self) -> None:
+        self.app = Flask(__name__)
+
+    def lire(self, chaine: str, permis: list[str]) -> dict[str, str]:
+        with self.app.test_request_context(f"/tickets?{chaine}"):
+            return lireParametres(permis)
+
+    def test_parametres_permis(self) -> None:
+        self.assertEqual(self.lire("", ["statut"]), {})
+        self.assertEqual(
+            self.lire("statut=ASSIGNE&createur=2", ["statut", "createur", "assigne"]),
+            {"statut": "ASSIGNE", "createur": "2"},
+        )
+
+    def test_parametre_inconnu(self) -> None:
+        with self.assertRaises(RequeteInvalide) as contexte:
+            self.lire("statu=FERME", ["statut"])
+        self.assertEqual(str(contexte.exception), "Paramètre inconnu : statu")
+
+    def test_parametre_entier(self) -> None:
+        self.assertEqual(parametreEntier({"createur": "2"}, "createur"), 2)
+        for valeur in ("abc", "", "2.5"):
+            with self.subTest(valeur=valeur):
+                with self.assertRaises(RequeteInvalide) as contexte:
+                    parametreEntier({"createur": valeur}, "createur")
+                self.assertEqual(
+                    str(contexte.exception),
+                    f"Le paramètre createur doit être un entier : {valeur!r}",
+                )
+
+    def test_enum_sur_un_parametre(self) -> None:
+        self.assertIs(enumParNom({"statut": "FERME"}, "statut", Statut), Statut.FERME)
+        with self.assertRaises(RequeteInvalide):
+            enumParNom({"statut": "ferme"}, "statut", Statut)
 
 
 if __name__ == "__main__":

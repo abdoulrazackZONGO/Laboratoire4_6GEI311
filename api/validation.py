@@ -1,4 +1,4 @@
-"""Lecture du corps JSON des requêtes : forme, champs, types et enums.
+"""Lecture du corps JSON et des paramètres des requêtes : forme, champs, types et enums.
 
 Chaque fonction lève RequeteInvalide (400) avec un message qui nomme le champ fautif.
 Elles ne vérifient que la forme : ce qui est permis ou non reste l'affaire du métier.
@@ -80,6 +80,31 @@ def enumParNom(corps: dict[str, Any], nom: str, typeEnum: type[E]) -> E:
         return typeEnum[valeur]
     permises = ", ".join(typeEnum.__members__)
     raise RequeteInvalide(f"Valeur invalide pour {nom} : {valeur!r} (attendu : {permises})")
+
+
+# ------------------------------------------------------------------ paramètres de requête
+# Ils arrivent toujours sous forme de texte. enumParNom() s'y applique telle quelle.
+
+
+def lireParametres(permis: Iterable[str]) -> dict[str, str]:
+    """Paramètres de la requête courante ; un nom inconnu (faute de frappe) est refusé.
+
+    Sans ce refus, ?statu=FERME renverrait tous les tickets, sans aucune erreur.
+    """
+    permis = set(permis)
+    parametres = request.args.to_dict()
+    for nom in parametres:
+        if nom not in permis:
+            raise RequeteInvalide(f"Paramètre inconnu : {nom}")
+    return parametres
+
+
+def parametreEntier(parametres: dict[str, str], nom: str) -> int:
+    valeur = _valeur(parametres, nom)
+    try:
+        return int(valeur)
+    except ValueError:
+        raise RequeteInvalide(f"Le paramètre {nom} doit être un entier : {valeur!r}") from None
 
 
 def _valeur(corps: dict[str, Any], nom: str) -> Any:
