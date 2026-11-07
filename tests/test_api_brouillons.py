@@ -1,4 +1,4 @@
-"""Tests de S4 : brouillons de création et d'édition, opération par opération.
+"""Tests de S4 : brouillons de création et d'édition, opération par opération, puis en parcours.
 
 Lancer depuis la racine du dépôt :  python -m unittest discover -s tests -t . -v
 """
@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from api import creerApplication
+from api.contexte import ContexteServeur
 from api.routes_brouillons import TAILLE_MAXIMALE_IMAGE
 from modele.enums import Statut
 from tests.test_api_tickets import ABDOUL, ADMIN, IMAGE_SOURCE, JULIEN, MIKE, TestEcriture
@@ -758,6 +760,165 @@ class TestAppliquer(TestBrouillons):
         self.commenter(brouillonId)
         self.assertEqual(self.appliquer(brouillonId).get_json()["nombreSucces"], 1)
         self.assertIs(self.ticket(6).status, Statut.FERME)
+
+
+class TestParcours(TestBrouillons):
+    def imageDe(self, ticketId: int) -> str:
+        ticket = self.requete("GET", f"/ticket/{ticketId}", ADMIN).get_json()
+        return next(e["url"] for e in ticket["description"] if e["type"] == "image")
+
+    def test_creation_complete(self) -> None:
+        """Tout le parcours du plan, jusqu'au téléchargement de l'image."""
+        version = self.contexte.version
+
+        # Ouvrir, puis ajouter texte, commentaire et image.
+        reponse = self.ouvrir(type="creation", titre="Paiement refusé", priorite="HAUTE")
+        self.assertEqual(reponse.status_code, 201)
+        brouillonId = reponse.get_json()["id"]
+        ticketId = reponse.get_json()["ticket"]["id"]
+        self.assertEqual(
+            self.ajouter(brouillonId, type="texte", texte="La carte est refusée").status_code, 201
+        )
+        self.commenter(brouillonId, "Testé sur Firefox")
+        self.assertEqual(self.ajouter(brouillonId, **corpsImage("capture.png")).status_code, 201)
+        copie = self.fichiers()[0]
+
+        # Annuler le dernier ajout : une seconde image, dont la copie doit disparaître.
+        self.assertEqual(self.ajouter(brouillonId, **corpsImage("en_trop.png")).status_code, 201)
+        self.assertEqual(len(self.fichiers()), 2)
+        annulation = self.annuler(brouillonId)
+        self.assertEqual(annulation.status_code, 200)
+        self.assertIn("_en_trop.png", annulation.get_json()["libelleRetire"])
+        self.assertEqual(self.fichiers(), [copie])
+
+        brouillon = self.lire(brouillonId)
+        self.assertEqual(len(brouillon["modificationsEnAttente"]), 3)
+        self.assertEqual(brouillon["nombreImages"], 1)
+
+        # Mettre en pause avec le texte tapé : tout ajout est refusé, sans laisser de copie.
+        reponse = self.requete(
+            "PATCH",
+            self.chemin(brouillonId),
+            JULIEN,
+            {"enPause": True, "texteBrouillon": "Depuis lundi"},
+        )
+        self.assertTrue(reponse.get_json()["enPause"])
+        for corps in ({"type": "commentaire", "texte": "Refusé"}, corpsImage("refusee.png")):
+            with self.subTest(type=corps["type"]):
+                reponse = self.ajouter(brouillonId, **corps)
+                self.verifierErreur(reponse, 409, "SessionIndisponibleException")
+        self.verifierErreur(self.appliquer(brouillonId), 409, "SessionIndisponibleException")
+        self.assertEqual(self.fichiers(), [copie])
+        self.assertEqual(len(self.lire(brouillonId)["modificationsEnAttente"]), 3)
+
+        # Rien n'a encore changé pour les autres : ni ticket, ni sauvegarde, ni version.
+        lecture = self.requete("GET", f"/ticket/{ticketId}", ADMIN)
+        self.verifierErreur(lecture, 404, "RessourceIntrouvable")
+        self.verifierRienEcrit(version)
+
+        # Reprendre : le texte tapé est toujours là, et le client le renvoie à l'application.
+        reponse = self.requete("PATCH", self.chemin(brouillonId), JULIEN, {"enPause": False})
+        brouillon = reponse.get_json()
+        self.assertFalse(brouillon["enPause"])
+        self.assertEqual(brouillon["texteBrouillon"], "Depuis lundi")
+
+        # Appliquer : le rapport décrit chaque modification, et le brouillon disparaît.
+        reponse = self.appliquer(brouillonId, {"texte": brouillon["texteBrouillon"]})
+        self.assertEqual(reponse.status_code, 201, reponse.get_data(as_text=True))
+        self.assertEqual(reponse.headers["Location"], f"/ticket/{ticketId}")
+        rapport = reponse.get_json()
+        self.assertEqual(rapport["ticketId"], ticketId)
+        self.assertEqual(rapport["nombreSucces"], 4)
+        self.assertEqual(rapport["nombreRefus"], 0)
+        self.assertGreater(self.contexte.version, version)
+        relu = self.requete("GET", self.chemin(brouillonId), JULIEN)
+        self.verifierErreur(relu, 404, "RessourceIntrouvable")
+
+        # Lire le ticket, dans l'ordre des ajouts.
+        ticket = self.requete("GET", f"/ticket/{ticketId}", ABDOUL).get_json()
+        self.assertEqual(ticket["titre"], "Paiement refusé")
+        self.assertEqual(ticket["createur"]["id"], JULIEN)
+        self.assertEqual([c["texte"] for c in ticket["commentaires"]], ["Testé sur Firefox"])
+        self.assertEqual(
+            [e["type"] for e in ticket["description"]], ["texte_saisi", "image", "texte_saisi"]
+        )
+        self.assertEqual(ticket["description"][0]["contenu"], "La carte est refusée")
+        self.assertEqual(ticket["description"][2]["contenu"], "Depuis lundi")
+
+        # Télécharger l'image par l'URL donnée, sans acteur.
+        image = self.client.get(ticket["description"][1]["url"])
+        self.assertEqual(image.status_code, 200)
+        self.assertEqual(image.mimetype, "image/png")
+        self.assertEqual(image.get_data(), IMAGE)
+        self.assertEqual(self.fichiers(), [copie])
+
+    def test_serveur_relance_apres_application(self) -> None:
+        """Le ticket et son image survivent à un redémarrage, pas un brouillon resté ouvert."""
+        applique = self.ouvrirCreation()
+        self.ajouter(applique, **corpsImage())
+        self.commenter(applique)
+        self.assertEqual(self.appliquer(applique).status_code, 201)
+        reste = self.ouvrirCreation()
+        url = self.imageDe(11)
+
+        relance = ContexteServeur(cheminSauvegarde=self.sauvegarde, dossierImages=str(self.images))
+        client = creerApplication(relance).test_client()
+        enTete = {"X-Acteur-Id": str(JULIEN)}
+        ticket = client.get("/ticket/11", headers=enTete).get_json()
+        self.assertEqual(len(ticket["commentaires"]), 1)
+        self.assertEqual(client.get(url).get_data(), IMAGE)
+        self.assertEqual(client.get("/acteur/3/brouillons", headers=enTete).get_json(), [])
+        relu = client.get(f"/acteur/3/brouillon/{reste}", headers=enTete)
+        self.verifierErreur(relu, 404, "RessourceIntrouvable")
+
+        # Le numéro du ticket appliqué ne resservira pas, et l'image reste au bon ticket.
+        nouveau = client.post(
+            "/acteur/3/brouillons",
+            headers=enTete,
+            json={"type": "creation", "titre": "Après", "priorite": "BASSE"},
+        ).get_json()
+        self.assertEqual(nouveau["ticket"]["id"], 12)
+
+    def test_edition_complete_puis_suppression(self) -> None:
+        """Éditer, relire l'image, puis supprimer le ticket et sa copie."""
+        brouillonId = self.ouvrirEdition(6)
+        self.commenter(brouillonId, "Précision")
+        self.ajouter(brouillonId, **corpsImage())
+        self.assertEqual(len(self.fichiers()), 1)
+        ancien = len(self.ticket(6).description.elements)
+
+        reponse = self.appliquer(brouillonId, {"texte": "Nouveau détail"})
+        self.assertEqual(reponse.status_code, 200, reponse.get_data(as_text=True))
+        self.assertEqual(reponse.get_json()["nombreSucces"], 3)
+        ticket = self.requete("GET", "/ticket/6", ADMIN).get_json()
+        self.assertEqual(ticket["nombreCommentaires"], 1)
+        self.assertEqual(len(ticket["description"]), ancien + 2)
+        url = self.imageDe(6)
+        self.assertEqual(self.client.get(url).get_data(), IMAGE)
+        self.assertIs(self.recharger().ticketParId(6).status, Statut.OUVERT)
+
+        self.assertEqual(self.requete("DELETE", "/ticket/6", JULIEN).status_code, 204)
+        self.assertEqual(self.fichiers(), [])
+        self.verifierErreur(self.client.get(url), 404, "RessourceIntrouvable")
+
+    def test_image_en_attente_pas_encore_servie(self) -> None:
+        """Elle n'est dans aucune description : ni son chemin ni son nom ne sont exposés."""
+        brouillonId = self.ouvrirEdition(6)
+        self.ajouter(brouillonId, **corpsImage())
+        nom = self.fichiers()[0].name
+        self.verifierErreur(self.client.get(f"/ticket/6/image/{nom}"), 404, "RessourceIntrouvable")
+        self.assertEqual(self.appliquer(brouillonId).status_code, 200)
+        self.assertEqual(self.client.get(f"/ticket/6/image/{nom}").status_code, 200)
+
+    def test_brouillons_de_deux_users_independants(self) -> None:
+        julien = self.ouvrirCreation(JULIEN)
+        mike = self.ouvrirCreation(MIKE)
+        self.ajouter(julien, **corpsImage())
+        self.ajouter(mike, MIKE, **corpsImage())
+        self.assertEqual(self.abandonner(mike, MIKE).status_code, 204)
+        self.assertEqual(len(self.fichiers()), 1)
+        self.assertEqual(self.appliquer(julien).status_code, 201)
+        self.assertEqual(self.client.get(self.imageDe(11)).get_data(), IMAGE)
 
 
 if __name__ == "__main__":
