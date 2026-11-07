@@ -31,6 +31,12 @@ def lireCorps() -> dict[str, Any]:
         raise RequeteInvalide(f"Corps JSON illisible : {erreur}") from erreur
     if not isinstance(corps, dict):
         raise RequeteInvalide("Le corps JSON doit être un objet")
+    # Un surrogate isolé ("\ud800") est du JSON valide, mais il ne s'écrit pas en UTF-8. Accepté,
+    # il ferait échouer chaque sauvegarde et chaque réponse qui le contient, jusqu'au redémarrage.
+    try:
+        json.dumps(corps, ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError:
+        raise RequeteInvalide("Corps JSON illisible : caractère Unicode invalide") from None
     return corps
 
 

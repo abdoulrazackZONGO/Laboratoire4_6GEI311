@@ -384,6 +384,41 @@ class TestCreerTicket(TestEcriture):
         identifiants = [self.creer().get_json()["ticket"]["id"] for _ in range(3)]
         self.assertEqual(identifiants, [11, 12, 13])
 
+    def test_titre_non_encodable_ne_bloque_pas_le_serveur(self) -> None:
+        """Ce ticket en mémoire ferait échouer toutes les sauvegardes et lectures suivantes."""
+        version = self.contexte.version
+        reponse = self.client.post(
+            "/tickets",
+            headers={"X-Acteur-Id": str(JULIEN)},
+            data=rb'{"titre": "\ud800", "priorite": "BASSE", "texte": "x"}',
+        )
+        self.verifierErreur(reponse, 400, "RequeteInvalide")
+        self.assertIsNone(self.systeme.ticketParId(11))
+        self.verifierRienEcrit(version)
+        self.assertEqual(self.requete("GET", "/tickets", ADMIN).status_code, 200)
+        reponse = self.requete("PATCH", "/ticket/7", ADMIN, {"statut": "FERME"})
+        self.assertEqual(reponse.status_code, 200)
+
+    def test_nom_de_champ_non_encodable(self) -> None:
+        """Le message d'erreur citerait ce nom : la réponse elle-même ne pourrait pas partir."""
+        reponse = self.client.patch(
+            "/ticket/6",
+            headers={"X-Acteur-Id": str(ADMIN)},
+            data=rb'{"statut": "FERME", "\ud800": 1}',
+        )
+        self.verifierErreur(reponse, 400, "RequeteInvalide")
+        self.assertIn("caractère Unicode invalide", reponse.get_json()["erreur"]["message"])
+
+    def test_emoji_dans_le_titre_sauvegarde(self) -> None:
+        reponse = self.client.post(
+            "/tickets",
+            headers={"X-Acteur-Id": str(JULIEN)},
+            json={"titre": "Bug 😀", "priorite": "BASSE", "texte": "x"},
+        )
+        self.assertEqual(reponse.status_code, 201, reponse.get_data(as_text=True))
+        self.assertEqual(reponse.get_json()["ticket"]["titre"], "Bug 😀")
+        self.assertEqual(self.recharger().ticketParId(11).title, "Bug 😀")
+
     def test_admin_refuse(self) -> None:
         version = self.contexte.version
         self.verifierErreur(self.creer(ADMIN), 403, "AccesRefuseException")

@@ -50,6 +50,23 @@ class TestLireCorps(unittest.TestCase):
         self.verifierRefus(b"{ pas du JSON", "Corps JSON illisible")
         self.verifierRefus(b"\xff\xfe\xfa", "Corps JSON illisible")
 
+    def test_surrogate_isole_refuse_partout_dans_le_corps(self) -> None:
+        """JSON valide, mais impossible à écrire en UTF-8 : ni en valeur, ni en nom de champ."""
+        for donnees in (
+            rb'{"titre": "\ud800"}',
+            rb'{"titre": "Bug \udc00 fin"}',
+            rb'{"\ud800": 1}',
+            rb'{"liste": [{"texte": "\ud83d"}]}',
+        ):
+            with self.subTest(donnees=donnees):
+                self.verifierRefus(donnees, "Corps JSON illisible : caractère Unicode invalide")
+
+    def test_emoji_accepte(self) -> None:
+        """Une paire de surrogates complète est un caractère normal, comme tout autre."""
+        echappe = rb'{"titre": "' + rb"\ud83d" + rb"\ude00" + rb'"}'
+        self.assertEqual(self.lire(echappe), {"titre": "😀"})
+        self.assertEqual(self.lire('{"titre": "😀 é"}'.encode()), {"titre": "😀 é"})
+
     def test_corps_qui_n_est_pas_un_objet(self) -> None:
         self.verifierRefus(b"[1, 2]", "Le corps JSON doit être un objet")
         self.verifierRefus(b'"texte"', "Le corps JSON doit être un objet")
