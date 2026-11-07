@@ -13,10 +13,11 @@ if TYPE_CHECKING:
 
 
 class VueEdition(FenetreBase):
-    """Toute action passe par le ControleurEdition ; un refus s'affiche et F5 reste ouverte."""
+    """Toute action passe par le ControleurEdition, donc par le brouillon du serveur ; un refus
+    s'affiche et F5 reste ouverte."""
 
     def __init__(self, parent: tk.Misc, controleur: ControleurEdition) -> None:
-        ticket = controleur.session.ticket
+        ticket = controleur.ticket
         if controleur.estCreation:
             titre = f"Nouveau ticket #{ticket.ticketID} — {ticket.title}"
         else:
@@ -134,19 +135,20 @@ class VueEdition(FenetreBase):
         defilement.pack(side="right", fill="y")
         return zone
 
-    # ------------------------------------------------------------------ lecture du modèle
+    # ------------------------------------------------------------------ lecture du brouillon
 
     def _texteTape(self) -> str:
         return self._texte.get("1.0", "end-1c")
 
     def _actualiser(self) -> None:
-        """Relit la session : compteur, liste en attente et boutons grisés."""
-        session = self._controleur.session
-        attente = session.modificationsEnAttente
+        """Relit le brouillon (dernier état reçu du serveur) : compteur, liste en attente et
+        boutons grisés."""
+        controleur = self._controleur
+        attente = controleur.modificationsEnAttente
         n = len(attente)
         pluriel = "s" if n > 1 else ""
         self._statut.configure(
-            text=f"{session.libelle} active · {n} modification{pluriel} en attente"
+            text=f"{controleur.libelle} active · {n} modification{pluriel} en attente"
         )
         self._titreAttente.configure(text=f"Modifications en attente ({n})")
         lignes = [f"{numero}. {libelle}" for numero, libelle in enumerate(attente, start=1)]
@@ -229,17 +231,16 @@ class VueEdition(FenetreBase):
         self._actualiser()
 
     def _mettreEnPause(self) -> None:
-        session = self._controleur.session
-        # Une session déjà appliquée, abandonnée ou en pause n'est pas remise en pause.
-        if not session.estOuverte or session.estEnPause:
+        controleur = self._controleur
+        # Un brouillon déjà appliqué, abandonné ou en pause n'est pas remis en pause.
+        if not controleur.estOuverte or controleur.estEnPause:
             self.fermer()
             return
         if self._tenter(self._controleur.mettreEnPause, self._texteTape()):
             self.fermer()
 
     def _abandonner(self) -> None:
-        session = self._controleur.session
-        if self._texteTape().strip() or session.modificationsEnAttente:
+        if self._texteTape().strip() or self._controleur.modificationsEnAttente:
             consequence = (
                 "le ticket ne sera pas créé" if self._controleur.estCreation
                 else "le ticket reste inchangé"

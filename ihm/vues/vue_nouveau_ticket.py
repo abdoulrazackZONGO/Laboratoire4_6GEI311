@@ -9,17 +9,18 @@ from ihm.vues.fenetre_base import FenetreBase
 from modele.enums import Priorite
 
 if TYPE_CHECKING:
-    from acteurs.user import User
     from ihm.controleurs.controleur_principal import ControleurPrincipal
+    from ihm.passerelle.objets_lecture import ActeurLu
 
 
 class VueNouveauTicket(FenetreBase):
-    """Formulaire seul : « Continuer » délègue la création au contrôleur principal."""
+    """Formulaire seul : « Continuer » délègue la création au contrôleur principal, qui ouvre
+    un brouillon de création sur le serveur puis l'éditeur F5."""
 
-    def __init__(self, parent: tk.Misc, principal: ControleurPrincipal, user: User) -> None:
+    def __init__(self, parent: tk.Misc, principal: ControleurPrincipal, user: ActeurLu) -> None:
         super().__init__(parent, "Nouveau ticket", [])
         self._principal: ControleurPrincipal = principal
-        self._user: User = user
+        self._user: ActeurLu = user
         self._titre = tk.StringVar(self)
         self._priorite = tk.StringVar(self, value=Priorite.MOYENNE.name)
         self._construire()

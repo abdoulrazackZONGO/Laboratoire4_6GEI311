@@ -3,23 +3,27 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import messagebox
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from ihm.controleurs.controleur_admin import ControleurAdmin
+from ihm.controleurs.controleur_edition import ControleurEdition
 from ihm.controleurs.controleur_user import ControleurUser
 from ihm.passerelle.client_api import URL_PAR_DEFAUT, ClientAPI
 from ihm.passerelle.erreurs import EXCEPTIONS_PASSERELLE
-from ihm.passerelle.objets_lecture import ActeurLu
+from ihm.passerelle.objets_lecture import ActeurLu, BrouillonLu
 from ihm.passerelle.source_tickets import SourceTickets
 from ihm.vues.vue_connexion import VueConnexion
+from ihm.vues.vue_edition import VueEdition
 from ihm.vues.vue_liste_admin import VueListeAdmin
 from ihm.vues.vue_liste_user import VueListeUser
 from ihm.vues.vue_lot import VueLot
+from ihm.vues.vue_nouveau_ticket import VueNouveauTicket
 from ihm.vues.vue_rapport import VueRapport
 
 if TYPE_CHECKING:
     from ihm.passerelle.client_api import Transport
     from ihm.passerelle.objets_lecture import RapportLu, TicketLu, TicketRefLu
+    from modele.enums import Priorite
 
 TITRE_APPLICATION = "Gestion des tickets"
 
@@ -34,6 +38,9 @@ class ControleurPrincipal:
     Le dépôt et sa sauvegarde vivent dans le serveur. Chaque session ouverte depuis F1 a sa
     propre ClientAPI (l'en-tête X-Acteur-Id de son acteur) et sa propre SourceTickets, que
     les fenêtres de la session observent. Une seule boucle after() les sonde toutes.
+
+    Les brouillons ne changent pas /version (ils ne sont pas dans le dépôt) : après une
+    action de F4 ou F5, signalerBrouillons() prévient les F3 ouvertes, qui les relisent.
     """
 
     def __init__(
@@ -46,6 +53,12 @@ class ControleurPrincipal:
         self._annuaire: ClientAPI = ClientAPI(url, transport=transport)
         self._acteurs: list[ActeurLu] = []
         self._sources: list[SourceTickets] = []
+        # Session ouverte de chaque acteur : F4 et F5 passent par le client et la source de
+        # l'utilisateur qui les a ouvertes.
+        self._sessions: dict[int, tuple[ClientAPI, SourceTickets]] = {}
+        # Un seul ControleurEdition par brouillon : la fenêtre sert à ramener F5 devant (lift).
+        self._editions: dict[int, tuple[ControleurEdition, VueEdition]] = {}
+        self._ecouteursBrouillons: list[Callable[[], None]] = []
         self._connexion: VueConnexion | None = None
         self._sondage: str | None = None
         # Vrai après un sondage raté : on ne prévient qu'une fois, pas chaque seconde.
@@ -117,6 +130,7 @@ class ControleurPrincipal:
         else:
             return
         self._sources.append(source)
+        self._sessions[acteur.id] = (client, source)
         self._demarrerSondage()
 
     def _demarrerSondage(self) -> None:
@@ -158,17 +172,85 @@ class ControleurPrincipal:
     def afficherRapport(self, rapport: RapportLu, libelle: str) -> None:
         VueRapport(self._racine, rapport, libelle)
 
-    # Fenêtres pas encore reliées au serveur : F4 et F5 (création et édition par brouillons)
-    # et F6 (détail, qui télécharge les images). Un message remplace leur ouverture.
-
     def ouvrirCreation(self, user: ActeurLu) -> None:
-        self._fenetreNonReliee("La création d'un ticket")
+        VueNouveauTicket(self._racine, self, user)
+
+    def commencerCreation(self, user: ActeurLu, titre: str, priorite: Priorite) -> None:
+        """Ouvre un brouillon de création (le serveur réserve le numéro du ticket), puis F5."""
+        client, source = self._session(user)
+        brouillon = BrouillonLu.depuisJSON(client.ouvrirBrouillonCreation(titre, priorite))
+        self._afficherEdition(client, source, brouillon)
+        self.signalerBrouillons()
 
     def ouvrirEdition(self, user: ActeurLu, ticket: TicketRefLu) -> None:
-        self._fenetreNonReliee("L'édition d'un ticket")
+        """Reprend le brouillon ouvert sur ce ticket, même en pause, ou en ouvre un, puis F5.
+
+        Le brouillon est cherché sur le serveur : il a pu être mis en pause dans une F5
+        fermée depuis. Pour un ticket existant, le serveur refuse un autre que le créateur.
+        """
+        client, source = self._session(user)
+        brouillons = [BrouillonLu.depuisJSON(b) for b in client.listerBrouillons()]
+        brouillon = next((b for b in brouillons if b.ticket == ticket), None)
+        if brouillon is None:
+            brouillon = BrouillonLu.depuisJSON(client.ouvrirBrouillonEdition(ticket.ticketID))
+        elif brouillon.estEnPause:
+            # Reprise avant d'afficher F5 : si le serveur refuse, aucune F5 ne s'ouvre.
+            brouillon = BrouillonLu.depuisJSON(
+                client.modifierBrouillon(brouillon.id, enPause=False)
+            )
+        self._afficherEdition(client, source, brouillon)
+        self.signalerBrouillons()
+
+    # Fenêtre pas encore reliée au serveur : F6 (détail, qui télécharge les images).
+    # Un message remplace son ouverture.
 
     def ouvrirDetail(self, tickets: list[TicketLu], index: int) -> None:
         self._fenetreNonReliee("Le détail d'un ticket")
+
+    # ------------------------------------------------------------------ registre des éditions
+
+    def _session(self, user: ActeurLu) -> tuple[ClientAPI, SourceTickets]:
+        """Client et source de la session de cet utilisateur, ouverte depuis F1."""
+        return self._sessions[user.id]
+
+    def _afficherEdition(
+        self, client: ClientAPI, source: SourceTickets, brouillon: BrouillonLu
+    ) -> ControleurEdition:
+        """Une seule F5 par brouillon : ramenée devant si elle est encore ouverte."""
+        self._purgerEditions()
+        entree = self._editions.get(brouillon.id)
+        if entree is None:
+            controleur = ControleurEdition(self, client, brouillon, source)
+        else:
+            controleur, fenetre = entree
+            controleur.actualiser(brouillon)
+            if fenetre.winfo_exists():
+                fenetre.lift()
+                fenetre.focus_set()
+                return controleur
+        self._editions[brouillon.id] = (controleur, VueEdition(self._racine, controleur))
+        return controleur
+
+    def _purgerEditions(self) -> None:
+        """Purge paresseuse : oublie les brouillons appliqués ou abandonnés."""
+        for brouillonId in [i for i, (c, _) in self._editions.items() if not c.estOuverte]:
+            del self._editions[brouillonId]
+
+    # ------------------------------------------------------------------ brouillons et F3
+
+    def ecouterBrouillons(self, rappel: Callable[[], None]) -> None:
+        """F3 s'inscrit à son ouverture : elle relit ses brouillons à chaque signal."""
+        if rappel not in self._ecouteursBrouillons:
+            self._ecouteursBrouillons.append(rappel)
+
+    def oublierBrouillons(self, rappel: Callable[[], None]) -> None:
+        if rappel in self._ecouteursBrouillons:
+            self._ecouteursBrouillons.remove(rappel)
+
+    def signalerBrouillons(self) -> None:
+        """Un brouillon a été ouvert, mis en pause, repris, abandonné ou appliqué."""
+        for rappel in list(self._ecouteursBrouillons):
+            rappel()
 
     def _fenetreNonReliee(self, fonction: str) -> None:
         messagebox.showinfo(
