@@ -6,6 +6,7 @@ from tkinter import messagebox
 from typing import TYPE_CHECKING, Callable
 
 from ihm.controleurs.controleur_admin import ControleurAdmin
+from ihm.controleurs.controleur_detail import ControleurDetail
 from ihm.controleurs.controleur_edition import ControleurEdition
 from ihm.controleurs.controleur_user import ControleurUser
 from ihm.passerelle.client_api import URL_PAR_DEFAUT, ClientAPI
@@ -13,6 +14,7 @@ from ihm.passerelle.erreurs import EXCEPTIONS_PASSERELLE
 from ihm.passerelle.objets_lecture import ActeurLu, BrouillonLu
 from ihm.passerelle.source_tickets import SourceTickets
 from ihm.vues.vue_connexion import VueConnexion
+from ihm.vues.vue_detail import VueDetail
 from ihm.vues.vue_edition import VueEdition
 from ihm.vues.vue_liste_admin import VueListeAdmin
 from ihm.vues.vue_liste_user import VueListeUser
@@ -201,11 +203,16 @@ class ControleurPrincipal:
         self._afficherEdition(client, source, brouillon)
         self.signalerBrouillons()
 
-    # Fenêtre pas encore reliée au serveur : F6 (détail, qui télécharge les images).
-    # Un message remplace son ouverture.
+    def ouvrirDetail(self, acteur: ActeurLu, tickets: list[TicketLu], index: int) -> None:
+        """Ouvre F6 sur tickets[index] ; la liste parcourue est celle de la fenêtre appelante.
 
-    def ouvrirDetail(self, tickets: list[TicketLu], index: int) -> None:
-        self._fenetreNonReliee("Le détail d'un ticket")
+        Le détail est lu avant d'ouvrir la fenêtre : si le serveur refuse ou ne répond pas,
+        l'erreur remonte à la liste et aucune F6 vide ne reste ouverte.
+        """
+        client, source = self._session(acteur)
+        controleur = ControleurDetail(client, source, tickets, index)
+        controleur.charger()
+        VueDetail(self._racine, controleur)
 
     # ------------------------------------------------------------------ registre des éditions
 
@@ -251,10 +258,3 @@ class ControleurPrincipal:
         """Un brouillon a été ouvert, mis en pause, repris, abandonné ou appliqué."""
         for rappel in list(self._ecouteursBrouillons):
             rappel()
-
-    def _fenetreNonReliee(self, fonction: str) -> None:
-        messagebox.showinfo(
-            TITRE_APPLICATION, f"{fonction} n'est pas encore reliée au serveur.",
-            detail="Cette fenêtre sera branchée sur l'API à une prochaine étape.",
-            parent=self._racine,
-        )

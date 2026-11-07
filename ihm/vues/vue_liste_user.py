@@ -215,7 +215,8 @@ class VueListeUser(FenetreBase):
             return
         # F6 parcourt les tickets de l'onglet avec ‹ Précédent / Suivant ›, à partir de la ligne choisie.
         tickets = self._ticketsDeLOnglet()
-        self.executer(self._controleur.principal.ouvrirDetail, tickets, tickets.index(ticket))
+        index = tickets.index(ticket)
+        self.executer(self._controleur.principal.ouvrirDetail, self._controleur.user, tickets, index)
 
     def _editer(self) -> None:
         ticket = self._selection()
