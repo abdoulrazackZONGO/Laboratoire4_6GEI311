@@ -34,7 +34,7 @@ class ErreurServeur(Exception):
     identification, ressource introuvable ou panne du serveur.
 
     Les sous-classes portent les noms des erreurs de api/erreurs.py. Le client ne peut pas
-    importer api (règle 3 de CLAUDE.md) : il les redéclare, avec le code HTTP reçu.
+    importer api (le client ne dépend pas du serveur) : il les redéclare, avec le code HTTP reçu.
     """
 
     def __init__(self, message: str, code: int, typeErreur: str | None = None) -> None:

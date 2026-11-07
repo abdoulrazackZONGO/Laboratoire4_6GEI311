@@ -1,4 +1,4 @@
-"""Passerelle HTTP du client : le seul module de la GUI qui fait des requêtes (règle 4 de CLAUDE.md).
+"""Passerelle HTTP du client : le seul module de la GUI qui fait des requêtes.
 
 ClientAPI envoie et reçoit du JSON, ajoute l'en-tête X-Acteur-Id et relève en exceptions
 les erreurs de l'API (voir erreurs.py). Ses méthodes d'opération portent le nom de
