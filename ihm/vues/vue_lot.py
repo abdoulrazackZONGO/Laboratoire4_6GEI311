@@ -9,10 +9,8 @@ from typing import TYPE_CHECKING
 from ihm.vues.fenetre_base import FenetreBase
 
 if TYPE_CHECKING:
-    from acteurs.user import User
-    from ihm.controleurs.controleur_admin import ControleurAdmin
-    from modele.ticket import Ticket
-    from sessions.lot_admin import LotAdmin
+    from ihm.controleurs.controleur_admin import ControleurAdmin, LotPrepare
+    from ihm.passerelle.objets_lecture import ActeurLu, TicketLu
 
 VERBES: dict[str, str] = {
     "assigner": "Assigner",
@@ -26,22 +24,22 @@ AVERTISSEMENT_FERMETURE = "Action définitive : un ticket fermé ne peut plus ch
 class VueLot(FenetreBase):
     """Montre exactement ce qui sera appliqué (modificationsEnAttente) ; rien ne change avant « Appliquer ».
 
-    « Annuler » ferme la fenêtre sans appeler appliquer() : le lot est simplement
-    oublié. Pour « Fermer », action définitive, un avertissement s'affiche et le
+    L'aperçu est construit sur le client : rien n'est envoyé au serveur avant « Appliquer ».
+    « Annuler » ferme la fenêtre : le lot est simplement oublié. Pour « Fermer », action définitive, un avertissement s'affiche et le
     focus est sur « Annuler » : la touche Entrée ne ferme aucun ticket.
     """
 
     def __init__(
-        self, parent: tk.Misc, controleur: ControleurAdmin, action: str, tickets: list[Ticket]
+        self, parent: tk.Misc, controleur: ControleurAdmin, action: str, tickets: list[TicketLu]
     ) -> None:
         super().__init__(
-            parent, "Gestion des tickets — Confirmation du lot", [controleur.principal.systeme]
+            parent, "Gestion des tickets — Confirmation du lot", [controleur.source]
         )
         self._controleur: ControleurAdmin = controleur
         self._action: str = action
-        self._tickets: list[Ticket] = list(tickets)
-        self._lot: LotAdmin | None = None
-        self._utilisateurs: list[User] = []
+        self._tickets: list[TicketLu] = list(tickets)
+        self._lot: LotPrepare | None = None
+        self._utilisateurs: list[ActeurLu] = []
         self._choixUtilisateur = tk.StringVar(self)
         self._construire()
         if action != "assigner":
@@ -141,7 +139,7 @@ class VueLot(FenetreBase):
         nom = self._choixUtilisateur.get()
         user = next((u for u in self._utilisateurs if u.name == nom), None)
         if user is not None:
-            # LotAdmin n'a ni retrait ni annulation : un nouveau choix donne un nouveau lot.
+            # Un nouveau choix donne un nouvel aperçu, plutôt que de modifier l'ancien.
             self._lot = self._controleur.preparerLot("assigner", self._tickets, user)
         self._actualiser()
         self._boutonAppliquer.focus_set()
@@ -173,6 +171,7 @@ class VueLot(FenetreBase):
         if self._lot is None:
             return
         lot, self._lot = self._lot, None  # un lot ne s'applique qu'une fois
-        # appliquerLot() ouvre F8 ; F2 se met à jour seule, par le patron Observer.
+        # appliquerLot() envoie le lot, relit la source (F2 se met à jour par le patron
+        # Observer) et ouvre F8.
         self.executer(self._controleur.appliquerLot, lot)
         self.fermer()

@@ -9,18 +9,18 @@ from typing import TYPE_CHECKING
 from ihm.vues.fenetre_base import FenetreBase
 
 if TYPE_CHECKING:
-    from acteurs.utilisateur_systeme import UtilisateurSysteme
     from ihm.controleurs.controleur_principal import ControleurPrincipal
+    from ihm.passerelle.objets_lecture import ActeurLu
 
 
 class VueConnexion(FenetreBase):
-    """Liste des acteurs de l'annuaire ; reste ouverte pour ouvrir plusieurs sessions."""
+    """Liste des acteurs de l'annuaire du serveur ; reste ouverte pour ouvrir plusieurs sessions."""
 
     def __init__(self, parent: tk.Misc, principal: ControleurPrincipal) -> None:
         # Aucun sujet : l'annuaire ne change pas pendant l'exécution.
         super().__init__(parent, "Gestion des tickets — Connexion", [])
         self._principal: ControleurPrincipal = principal
-        self._acteurs: dict[str, UtilisateurSysteme] = {}
+        self._acteurs: dict[str, ActeurLu] = {}
         # Quitter la connexion, c'est quitter l'application.
         self.protocol("WM_DELETE_WINDOW", principal.quitter)
         self._construire()
@@ -62,7 +62,7 @@ class VueConnexion(FenetreBase):
         self.bind("<Return>", lambda _evenement: self._ouvrir())
 
     def _remplir(self) -> None:
-        for acteur in self._principal.systeme.utilisateurs:
+        for acteur in self._principal.acteurs:
             identifiant = self._liste.insert("", "end", values=(acteur.name, acteur.role))
             self._acteurs[identifiant] = acteur
         premier = next(iter(self._acteurs), None)

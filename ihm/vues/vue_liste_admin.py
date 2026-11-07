@@ -11,7 +11,7 @@ from modele.enums import Statut
 
 if TYPE_CHECKING:
     from ihm.controleurs.controleur_admin import ControleurAdmin
-    from modele.ticket import Ticket
+    from ihm.passerelle.objets_lecture import TicketLu
 
 TOUS = "Tous"
 
@@ -35,7 +35,8 @@ COLONNES: tuple[tuple[str, str, int, bool], ...] = (
 
 
 class VueListeAdmin(FenetreBase):
-    """Tout le dépôt ; abonnée au dépôt, elle se redessine à chaque notification (Observer).
+    """Tous les tickets du serveur ; abonnée à la source de la session, elle se redessine à
+    chaque notification (Observer), y compris pour un changement fait dans une autre GUI.
 
     La vue ne modifie jamais un ticket : les boutons suivent actionsPossibles() du
     contrôleur, et chaque action ouvre F7, qui demande confirmation avant d'appliquer.
@@ -44,11 +45,11 @@ class VueListeAdmin(FenetreBase):
     def __init__(self, parent: tk.Misc, controleur: ControleurAdmin) -> None:
         super().__init__(
             parent, f"Gestion des tickets — {controleur.admin.name} (Admin)",
-            [controleur.principal.systeme],
+            [controleur.source],
         )
         self._controleur: ControleurAdmin = controleur
         self._filtre = tk.StringVar(self, value=TOUS)
-        self._tickets: dict[str, Ticket] = {}  # identifiant de ligne -> ticket
+        self._tickets: dict[str, TicketLu] = {}  # identifiant de ligne -> ticket
         self._boutons: dict[str, ttk.Button] = {}
         self._construire()
         self.rafraichir()
@@ -135,7 +136,7 @@ class VueListeAdmin(FenetreBase):
         self._liste.yview_moveto(haut)
         self._actualiserBoutons()
 
-    def _selection(self) -> list[Ticket]:
+    def _selection(self) -> list[TicketLu]:
         """Tickets sélectionnés, dans l'ordre du tableau."""
         choisis = set(self._liste.selection())
         return [self._tickets[i] for i in self._liste.get_children() if i in choisis]

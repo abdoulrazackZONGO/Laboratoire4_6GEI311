@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from ihm.vues.fenetre_base import FenetreBase
 
 if TYPE_CHECKING:
-    from sessions.rapport_execution import RapportExecution
+    from ihm.passerelle.objets_lecture import RapportLu
 
 VERT_FOND, VERT_TEXTE = "#dcfce7", "#166534"
 ROUGE_FOND, ROUGE_TEXTE = "#fee2e2", "#b42318"
@@ -18,13 +18,13 @@ ROUGE_FOND, ROUGE_TEXTE = "#fee2e2", "#b42318"
 class VueRapport(FenetreBase):
     """Bilan, puis chaque succès et chaque refus avec son motif ; lecture seule.
 
-    Aucun sujet observé : le rapport décrit une application passée. Les listes
-    F2, F3 et F6 ont déjà été prévenues par le dépôt (Observer).
+    Aucun sujet observé : le rapport décrit une application passée, renvoyée par le
+    serveur. Les listes F2 et F3 ont déjà été prévenues par la source (Observer).
     """
 
-    def __init__(self, parent: tk.Misc, rapport: RapportExecution, libelle: str) -> None:
+    def __init__(self, parent: tk.Misc, rapport: RapportLu, libelle: str) -> None:
         super().__init__(parent, f"Gestion des tickets — Rapport : {libelle}", [])
-        self._rapport: RapportExecution = rapport
+        self._rapport: RapportLu = rapport
         self._libelle: str = libelle
         self._construire()
 

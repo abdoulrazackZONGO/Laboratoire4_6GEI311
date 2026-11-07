@@ -1,193 +1,178 @@
-"""Contrôleur principal : navigation entre les fenêtres, chargement et sauvegarde."""
+"""Contrôleur principal : navigation entre les fenêtres et sessions ouvertes sur le serveur."""
 from __future__ import annotations
 
 import tkinter as tk
 from tkinter import messagebox
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ihm.controleurs.controleur_admin import ControleurAdmin
-from ihm.controleurs.controleur_edition import ControleurEdition
 from ihm.controleurs.controleur_user import ControleurUser
+from ihm.passerelle.client_api import URL_PAR_DEFAUT, ClientAPI
+from ihm.passerelle.erreurs import EXCEPTIONS_PASSERELLE
+from ihm.passerelle.objets_lecture import ActeurLu
+from ihm.passerelle.source_tickets import SourceTickets
 from ihm.vues.vue_connexion import VueConnexion
-from ihm.vues.vue_detail import VueDetail
-from ihm.vues.vue_edition import VueEdition
 from ihm.vues.vue_liste_admin import VueListeAdmin
 from ihm.vues.vue_liste_user import VueListeUser
 from ihm.vues.vue_lot import VueLot
-from ihm.vues.vue_nouveau_ticket import VueNouveauTicket
 from ihm.vues.vue_rapport import VueRapport
-from modele.systeme_tickets import SystemeTickets
-from modele.ticket import Ticket
-from persistance.depot_json import DepotJSON, PersistanceException
-from persistance.stockage_images import StockageImages
 
 if TYPE_CHECKING:
-    from acteurs.admin import Admin
-    from acteurs.user import User
-    from acteurs.utilisateur_systeme import UtilisateurSysteme
-    from modele.enums import Priorite
-    from sessions.rapport_execution import RapportExecution
-    from sessions.session_edition import SessionEdition
+    from ihm.passerelle.client_api import Transport
+    from ihm.passerelle.objets_lecture import RapportLu, TicketLu, TicketRefLu
 
-CHEMIN_SAUVEGARDE = "donnees/sauvegarde.json"
-CHEMIN_DEMO = "donnees/demo.json"
 TITRE_APPLICATION = "Gestion des tickets"
+
+# Rythme du sondage de GET /version : ce qui remplace le patron Observateur entre la GUI
+# et le serveur. Une seconde suffit pour voir le changement fait par une autre GUI.
+INTERVALLE_SONDAGE_MS = 1000
 
 
 class ControleurPrincipal:
-    """Seul contrôleur qui crée des fenêtres ; détient le dépôt et le stockage des images."""
+    """Seul contrôleur qui crée des fenêtres ; ne détient aucune donnée persistante.
 
-    def __init__(self, racine: tk.Tk) -> None:
+    Le dépôt et sa sauvegarde vivent dans le serveur. Chaque session ouverte depuis F1 a sa
+    propre ClientAPI (l'en-tête X-Acteur-Id de son acteur) et sa propre SourceTickets, que
+    les fenêtres de la session observent. Une seule boucle after() les sonde toutes.
+    """
+
+    def __init__(
+        self, racine: tk.Tk, url: str = URL_PAR_DEFAUT, *, transport: Transport | None = None
+    ) -> None:
         self._racine: tk.Tk = racine
-        self._systeme: SystemeTickets = SystemeTickets()
-        self._stockage: StockageImages = StockageImages()
+        self._url: str = url
+        self._transport: Transport | None = transport
+        # Sans acteur : seules les routes publiques (annuaire) lui sont permises.
+        self._annuaire: ClientAPI = ClientAPI(url, transport=transport)
+        self._acteurs: list[ActeurLu] = []
+        self._sources: list[SourceTickets] = []
         self._connexion: VueConnexion | None = None
-        # Un seul ControleurEdition par session : il survit à la fermeture de F5 et garde
-        # le texte tapé et les copies d'images. La fenêtre sert à la ramener devant (lift).
-        self._editions: dict[SessionEdition, tuple[ControleurEdition, VueEdition]] = {}
+        self._sondage: str | None = None
+        # Vrai après un sondage raté : on ne prévient qu'une fois, pas chaque seconde.
+        self._serveurPerdu: bool = False
 
     @property
-    def systeme(self) -> SystemeTickets:
-        return self._systeme
+    def url(self) -> str:
+        return self._url
 
     @property
-    def stockage(self) -> StockageImages:
-        return self._stockage
+    def acteurs(self) -> list[ActeurLu]:
+        """Annuaire lu au démarrage (GET /acteurs) : il ne change pas pendant l'exécution."""
+        return list(self._acteurs)
 
     # ------------------------------------------------------------------ cycle de vie
 
-    def demarrer(self) -> None:
-        """Charge la sauvegarde, ou à défaut la démonstration, puis ouvre la connexion."""
-        self._systeme = self._charger()
-        self._connexion = VueConnexion(self._racine, self)
+    def demarrer(self) -> bool:
+        """Lit l'annuaire du serveur puis ouvre F1 ; sans serveur, propose de réessayer.
 
-    def _charger(self) -> SystemeTickets:
-        sauvegarde = DepotJSON(CHEMIN_SAUVEGARDE)
-        if sauvegarde.existe():
+        Rend faux si l'utilisateur renonce : l'application est alors déjà fermée.
+        """
+        while True:
             try:
-                return self._lire(sauvegarde)
-            except PersistanceException as erreur:
-                messagebox.showerror(
-                    TITRE_APPLICATION,
-                    f"{erreur}\n\nL'application démarre sur les données de démonstration.",
-                    parent=self._racine,
-                )
-        # Une démonstration illisible n'est pas rattrapée : sans elle, aucun acteur.
-        return self._lire(DepotJSON(CHEMIN_DEMO))
-
-    def _lire(self, depot: DepotJSON) -> SystemeTickets:
-        """Charge un fichier et signale ses avertissements (artefacts introuvables)."""
-        systeme = depot.charger()
-        if depot.avertissements:
-            messagebox.showwarning(
-                TITRE_APPLICATION,
-                f"Chargement de {depot.chemin.as_posix()} :\n" + "\n".join(depot.avertissements),
-                parent=self._racine,
-            )
-        return systeme
+                self._acteurs = [ActeurLu.depuisJSON(a) for a in self._annuaire.listerActeurs()]
+                break
+            except EXCEPTIONS_PASSERELLE as erreur:
+                if not messagebox.askretrycancel(
+                    TITRE_APPLICATION, str(erreur),
+                    detail=f"Lancez le serveur (python serveur.py), puis réessayez.\n"
+                           f"Adresse utilisée : {self._url}",
+                    icon="error", parent=self._racine,
+                ):
+                    self._racine.destroy()
+                    return False
+        self._connexion = VueConnexion(self._racine, self)
+        return True
 
     def quitter(self) -> None:
-        """Avertit des sessions perdues, sauvegarde, puis ferme l'application."""
-        parent = self._connexion if self._connexion is not None else self._racine
-        ouvertes = sum(len(user.sessionsOuvertes) for user in self.utilisateurs())
-        if ouvertes:
-            if ouvertes == 1:
-                message = "1 session encore ouverte (édition ou création)."
-                detail = "Elle n'est pas sauvegardée et sera perdue. Quitter quand même ?"
-            else:
-                message = f"{ouvertes} sessions encore ouvertes (édition ou création)."
-                detail = "Elles ne sont pas sauvegardées et seront perdues. Quitter quand même ?"
-            if not messagebox.askyesno(
-                TITRE_APPLICATION, message, detail=detail,
-                icon="warning", default="no", parent=parent,
-            ):
-                return
-        try:
-            DepotJSON(CHEMIN_SAUVEGARDE).sauvegarder(self._systeme)
-        except (PersistanceException, OSError) as erreur:
-            if not messagebox.askyesno(
-                TITRE_APPLICATION, f"Sauvegarde impossible : {erreur}",
-                detail="Quitter sans sauvegarder ?",
-                icon="error", default="no", parent=parent,
-            ):
-                return
+        """Arrête le sondage et ferme l'application.
+
+        Rien à sauvegarder : chaque action a déjà été enregistrée par le serveur.
+        """
+        if self._sondage is not None:
+            self._racine.after_cancel(self._sondage)
+            self._sondage = None
         self._racine.destroy()
 
     # ------------------------------------------------------------------ données
 
-    def utilisateurs(self) -> list[User]:
-        """Acteurs de rôle User (choix de l'assigné, sessions ouvertes), sans isinstance."""
-        return [
-            cast("User", acteur) for acteur in self._systeme.utilisateurs
-            if acteur.role == "User"
-        ]
+    def utilisateurs(self) -> list[ActeurLu]:
+        """Acteurs de rôle User (choix de l'assigné dans F7)."""
+        return [acteur for acteur in self._acteurs if acteur.role == "User"]
 
-    def prochainIdentifiant(self) -> int:
-        """Plus grand identifiant du dépôt et des brouillons ouverts, plus 1."""
-        identifiants = [ticket.ticketID for ticket in self._systeme.tickets]
-        for user in self.utilisateurs():
-            identifiants += [session.ticket.ticketID for session in user.sessionsOuvertes]
-        return max(identifiants, default=0) + 1
+    # ------------------------------------------------------------------ sessions et sondage
+
+    def ouvrirSession(self, acteur: ActeurLu) -> None:
+        """Crée la ClientAPI et la SourceTickets de l'acteur, puis ouvre sa liste (F2 ou F3).
+
+        La source est chargée avant d'ouvrir la fenêtre : si le serveur ne répond pas,
+        F1 affiche l'erreur et aucune fenêtre vide ne reste ouverte.
+        """
+        client = ClientAPI(self._url, acteur.id, transport=self._transport)
+        source = SourceTickets(client)
+        source.rafraichir()
+        if acteur.role == "Admin":
+            VueListeAdmin(self._racine, ControleurAdmin(self, acteur, client, source))
+        elif acteur.role == "User":
+            VueListeUser(self._racine, ControleurUser(self, acteur, client, source))
+        else:
+            return
+        self._sources.append(source)
+        self._demarrerSondage()
+
+    def _demarrerSondage(self) -> None:
+        if self._sondage is None:
+            self._sondage = self._racine.after(INTERVALLE_SONDAGE_MS, self._sonder)
+
+    def _sonder(self) -> None:
+        """Chaque source encore observée relit /version, et les tickets s'il a changé.
+
+        Une source dont toutes les fenêtres sont fermées n'a plus d'abonné : elle est oubliée,
+        et la boucle s'arrête quand il n'en reste aucune. Le tour suivant est planifié avant
+        de sonder, pour qu'une erreur n'arrête pas la boucle.
+        """
+        self._sondage = None
+        self._sources = [source for source in self._sources if source.nombreObservateurs > 0]
+        if not self._sources:
+            return
+        self._demarrerSondage()
+        try:
+            for source in list(self._sources):
+                source.verifierVersion()
+        except EXCEPTIONS_PASSERELLE as erreur:
+            if not self._serveurPerdu:
+                self._serveurPerdu = True
+                messagebox.showerror(
+                    TITRE_APPLICATION, str(erreur),
+                    detail="Les listes ne sont plus à jour. Elles se mettront à jour "
+                           "d'elles-mêmes dès que le serveur répondra de nouveau.",
+                    parent=self._racine,
+                )
+            return
+        self._serveurPerdu = False
 
     # ------------------------------------------------------------------ navigation
 
-    def ouvrirSession(self, acteur: UtilisateurSysteme) -> None:
-        if acteur.role == "Admin":
-            self.ouvrirListeAdmin(cast("Admin", acteur))
-        elif acteur.role == "User":
-            self.ouvrirListeUser(cast("User", acteur))
-
-    def ouvrirListeAdmin(self, admin: Admin) -> None:
-        VueListeAdmin(self._racine, ControleurAdmin(self, admin))
-
-    def ouvrirListeUser(self, user: User) -> None:
-        VueListeUser(self._racine, ControleurUser(self, user))
-
-    def ouvrirCreation(self, user: User) -> None:
-        VueNouveauTicket(self._racine, self, user)
-
-    def commencerCreation(self, user: User, titre: str, priorite: Priorite) -> None:
-        """Crée le ticket et sa session de création, hors du dépôt, puis ouvre F5."""
-        self._purgerEditions()
-        ticket = Ticket(self.prochainIdentifiant(), titre, priorite)
-        session = user.ouvrirSessionCreation(ticket)
-        self._afficherEdition(session)
-
-    def ouvrirEdition(self, user: User, ticket: Ticket) -> None:
-        """Reprend la session en cours, même en pause, ou en ouvre une, puis F5."""
-        self._purgerEditions()
-        session = user.sessionEnCours(ticket)
-        if session is None:
-            session = user.ouvrirSessionEdition(ticket)
-        if session.estEnPause:
-            session.reprendre()
-        self._afficherEdition(session)
-
-    def ouvrirDetail(self, tickets: list[Ticket], index: int) -> None:
-        VueDetail(self._racine, self._systeme, tickets, index)
-
-    def ouvrirLot(self, controleur: ControleurAdmin, action: str, tickets: list[Ticket]) -> None:
+    def ouvrirLot(self, controleur: ControleurAdmin, action: str, tickets: list[TicketLu]) -> None:
         VueLot(self._racine, controleur, action, tickets)
 
-    def afficherRapport(self, rapport: RapportExecution, libelle: str) -> None:
+    def afficherRapport(self, rapport: RapportLu, libelle: str) -> None:
         VueRapport(self._racine, rapport, libelle)
 
-    # ------------------------------------------------------------------ registre des éditions
+    # Fenêtres pas encore reliées au serveur : F4 et F5 (création et édition par brouillons)
+    # et F6 (détail, qui télécharge les images). Un message remplace leur ouverture.
 
-    def _afficherEdition(self, session: SessionEdition) -> None:
-        """Une seule F5 par session : ramenée devant si elle est encore ouverte."""
-        entree = self._editions.get(session)
-        if entree is None:
-            controleur = ControleurEdition(self, session)
-        else:
-            controleur, fenetre = entree
-            if fenetre.winfo_exists():
-                fenetre.lift()
-                fenetre.focus_set()
-                return
-        self._editions[session] = (controleur, VueEdition(self._racine, controleur))
+    def ouvrirCreation(self, user: ActeurLu) -> None:
+        self._fenetreNonReliee("La création d'un ticket")
 
-    def _purgerEditions(self) -> None:
-        """Purge paresseuse : oublie les sessions appliquées ou abandonnées."""
-        for session in [s for s in self._editions if not s.estOuverte]:
-            del self._editions[session]
+    def ouvrirEdition(self, user: ActeurLu, ticket: TicketRefLu) -> None:
+        self._fenetreNonReliee("L'édition d'un ticket")
+
+    def ouvrirDetail(self, tickets: list[TicketLu], index: int) -> None:
+        self._fenetreNonReliee("Le détail d'un ticket")
+
+    def _fenetreNonReliee(self, fonction: str) -> None:
+        messagebox.showinfo(
+            TITRE_APPLICATION, f"{fonction} n'est pas encore reliée au serveur.",
+            detail="Cette fenêtre sera branchée sur l'API à une prochaine étape.",
+            parent=self._racine,
+        )
