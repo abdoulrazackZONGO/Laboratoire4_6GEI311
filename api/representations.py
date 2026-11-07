@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from description.element_description import ElementDescription
     from modele.commentaire import Commentaire
     from modele.ticket import Ticket
+    from sessions.rapport_execution import RapportExecution
 
 NOM_TEXTE_SAISI = "texte saisi"
 
@@ -86,3 +87,15 @@ def ticketDetail(t: Ticket) -> dict[str, Any]:
     detail["commentaires"] = [commentaire(c) for c in t.comments]
     detail["description"] = [elementDescription(e, t.ticketID) for e in t.description.elements]
     return detail
+
+
+def rapport(r: RapportExecution, libelle: str, ticketId: int | None = None) -> dict[str, Any]:
+    """Un refus figure ici sans être une erreur HTTP ; le modèle ne porte ni libellé ni ticket."""
+    return {
+        "libelle": libelle,
+        "succes": r.succes,
+        "refus": [{"operation": operation, "motif": motif} for operation, motif in r.refus],
+        "nombreSucces": r.nombreSucces,
+        "nombreRefus": r.nombreRefus,
+        "ticketId": ticketId,
+    }
