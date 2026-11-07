@@ -40,6 +40,11 @@ def lireCorps() -> dict[str, Any]:
     return corps
 
 
+def lireCorpsFacultatif() -> dict[str, Any]:
+    """Comme lireCorps(), mais une requête sans corps donne un objet vide."""
+    return lireCorps() if request.get_data().strip() else {}
+
+
 def verifierChamps(
     corps: dict[str, Any], obligatoires: Iterable[str], facultatifs: Iterable[str] = ()
 ) -> None:
@@ -69,11 +74,17 @@ def booleen(corps: dict[str, Any], nom: str) -> bool:
     return valeur
 
 
-def chaineNonVide(corps: dict[str, Any], nom: str) -> str:
-    """Chaîne qui contient autre chose que des blancs ; elle est rendue telle quelle."""
+def chaine(corps: dict[str, Any], nom: str) -> str:
+    """Chaîne, vide ou non ; c'est le métier qui refuse un texte saisi vide, par exemple."""
     valeur = _valeur(corps, nom)
     if not isinstance(valeur, str):
         raise RequeteInvalide(f"Le champ {nom} doit être une chaîne")
+    return valeur
+
+
+def chaineNonVide(corps: dict[str, Any], nom: str) -> str:
+    """Chaîne qui contient autre chose que des blancs ; elle est rendue telle quelle."""
+    valeur = chaine(corps, nom)
     if not valeur.strip():
         raise RequeteInvalide(f"Le champ {nom} ne doit pas être vide")
     return valeur

@@ -50,6 +50,12 @@ class RessourceIntrouvable(ErreurAPI):
     code = 404
 
 
+class RequeteTropVolumineuse(ErreurAPI):
+    """Image au-delà de sa limite ; Flask lève lui-même le 413 au-delà de la limite du corps."""
+
+    code = 413
+
+
 # Table de CLAUDE.md. Le 403 « mauvais rôle » ou « acteur du chemin différent de
 # l'en-tête » n'a pas de classe à lui : la route lève AccesRefuseException.
 CODES_EXCEPTIONS: dict[type[Exception], int] = {
@@ -61,6 +67,7 @@ CODES_EXCEPTIONS: dict[type[Exception], int] = {
     RequeteInvalide: RequeteInvalide.code,
     ActeurNonIdentifie: ActeurNonIdentifie.code,
     RessourceIntrouvable: RessourceIntrouvable.code,
+    RequeteTropVolumineuse: RequeteTropVolumineuse.code,
 }
 
 # Erreurs HTTP levées par Flask lui-même (routage, taille du corps).
