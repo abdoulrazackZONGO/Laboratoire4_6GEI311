@@ -8,11 +8,12 @@ accepte ou lève une exception, jamais la route. La sauvegarde n'a lieu qu'aprè
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, Response, jsonify
 
 from api import representations
 from api.contexte import contexteCourant
@@ -42,6 +43,7 @@ blueprint = Blueprint("tickets", __name__)
 # Les images de démonstration sont versionnées dans le dossier des copies : jamais supprimées.
 # Une copie envoyée commence par un préfixe aléatoire, même si son original s'appelait demo_x.
 PREFIXE_IMAGES_DEMO = "demo_"
+TYPES_IMAGES: dict[str, str] = {".png": "image/png", ".gif": "image/gif"}
 
 # Statut demandé -> rôle exigé et méthode métier (table de PATCH dans openapi.yaml).
 # L'acteur a le rôle exigé quand l'action s'exécute, d'où Any pour son type.
@@ -106,6 +108,32 @@ def lireDescription(ticketId: int):
             representations.elementDescription(e, ticket.ticketID)
             for e in ticket.description.elements
         ])
+
+
+@blueprint.get("/ticket/<int:ticketId>/image/<nomImage>")
+def lireImage(ticketId: int, nomImage: str):
+    """Sans acteur, pour qu'une balise <img> de la page web puisse l'afficher.
+
+    Le nom reçu n'entre jamais dans un chemin de fichier : il ne sert qu'à choisir parmi les
+    images de ce ticket. ../ ou le nom d'un autre fichier du serveur ne désignent donc rien.
+    Le contenu n'est pas vérifié à l'envoi, seulement l'extension : nosniff interdit au
+    navigateur de le prendre pour autre chose qu'une image.
+    """
+    contexte = contexteCourant()
+    with contexte.verrou:
+        ticket = ticketExistant(contexte.systeme, ticketId)
+        chemin = _cheminImage(ticket, nomImage)
+        try:
+            # Lu ici et non par send_file() : le fichier ne reste pas ouvert après la réponse,
+            # ce qui empêcherait sa suppression sous Windows.
+            octets = Path(chemin).read_bytes()
+        except FileNotFoundError:
+            raise RessourceIntrouvable(f"Image introuvable : {nomImage}") from None
+    reponse = Response(
+        octets, mimetype=TYPES_IMAGES.get(Path(chemin).suffix.lower(), "application/octet-stream")
+    )
+    reponse.headers["X-Content-Type-Options"] = "nosniff"
+    return reponse
 
 
 @blueprint.post("/tickets")
@@ -208,6 +236,14 @@ def ticketExistant(systeme: SystemeTickets, ticketId: int) -> Ticket:
     if ticket is None:
         raise RessourceIntrouvable(f"Ticket introuvable : {ticketId}")
     return ticket
+
+
+def _cheminImage(ticket: Ticket, nomImage: str) -> str:
+    """Chemin de l'image de ce ticket qui porte ce nom, celui de son URL dans la description."""
+    for element in ticket.description.elements:
+        if element.typeArtefact == "image" and os.path.basename(element.chemin) == nomImage:
+            return element.chemin
+    raise RessourceIntrouvable(f"Image introuvable : {nomImage}")
 
 
 def _ticketsDe(systeme: SystemeTickets, acteurId: int) -> list[Ticket]:

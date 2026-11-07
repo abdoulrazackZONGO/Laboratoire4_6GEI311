@@ -83,6 +83,24 @@ class TestEcriture(unittest.TestCase):
         self.assertFalse(self.sauvegarde.exists())
         self.assertEqual(self.contexte.version, version)
 
+    def copieImage(self, nom: str = "abc12345_capture.png") -> Path:
+        """Fichier image dans le dossier de stockage temporaire."""
+        self.images.mkdir(exist_ok=True)
+        chemin = self.images / nom
+        shutil.copy2(IMAGE_SOURCE, chemin)
+        return chemin
+
+    def ticketAvecElements(self, *elements: tuple[str, Path | str]) -> Ticket:
+        """Ticket de T Julien, jamais assigné, créé par le métier avec ces éléments."""
+        ticket = Ticket(self.systeme.reserverIdentifiant(), "Avec images", Priorite.BASSE)
+        createur = self.systeme.utilisateurParId(JULIEN)
+        session = createur.ouvrirSessionCreation(ticket)
+        for typeArtefact, chemin in elements:
+            session.ajouterElement(typeArtefact, str(chemin))
+        rapport = session.appliquer()
+        self.assertEqual(rapport.refus, [])
+        return ticket
+
 
 class TestReglesAcces(TestEcriture):
     def setUp(self) -> None:
@@ -463,24 +481,6 @@ class TestSupprimerTicket(TestEcriture):
     def supprimer(self, ticketId: int, acteurId: int | None = JULIEN):
         return self.requete("DELETE", f"/ticket/{ticketId}", acteurId)
 
-    def copieImage(self, nom: str = "abc12345_capture.png") -> Path:
-        """Fichier image dans le dossier de stockage temporaire."""
-        self.images.mkdir(exist_ok=True)
-        chemin = self.images / nom
-        shutil.copy2(IMAGE_SOURCE, chemin)
-        return chemin
-
-    def ticketAvecElements(self, *elements: tuple[str, Path | str]) -> Ticket:
-        """Ticket de T Julien, jamais assigné, créé par le métier avec ces éléments."""
-        ticket = Ticket(self.systeme.reserverIdentifiant(), "Avec images", Priorite.BASSE)
-        createur = self.systeme.utilisateurParId(JULIEN)
-        session = createur.ouvrirSessionCreation(ticket)
-        for typeArtefact, chemin in elements:
-            session.ajouterElement(typeArtefact, str(chemin))
-        rapport = session.appliquer()
-        self.assertEqual(rapport.refus, [])
-        return ticket
-
     def test_suppression(self) -> None:
         version = self.contexte.version
         reponse = self.supprimer(6)
@@ -618,6 +618,132 @@ class TestSupprimerTicket(TestEcriture):
             reponse = self.supprimer(ticket.ticketID)
         self.verifierErreur(reponse, 500, "ErreurInterne")
         self.assertTrue(image.exists())
+
+
+class TestLireImage(TestEcriture):
+    def lire(self, chemin: str):
+        """Sans en-tête X-Acteur-Id : une balise <img> n'en envoie pas."""
+        return self.client.get(chemin)
+
+    def urlImage(self, ticketId: int) -> str:
+        """L'URL que donne la description, seule chose qu'un client connaît."""
+        ticket = self.requete("GET", f"/ticket/{ticketId}", ADMIN).get_json()
+        return next(e["url"] for e in ticket["description"] if e["type"] == "image")
+
+    def verifierIntrouvable(self, chemin: str) -> None:
+        self.verifierErreur(self.lire(chemin), 404, "RessourceIntrouvable")
+
+    def test_image_de_demonstration(self) -> None:
+        reponse = self.lire(self.urlImage(1))
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(reponse.mimetype, "image/png")
+        self.assertEqual(reponse.headers["X-Content-Type-Options"], "nosniff")
+        attendu = (RACINE / "donnees" / "images" / "demo_connexion.png").read_bytes()
+        self.assertEqual(reponse.get_data(), attendu)
+
+    def test_sans_acteur_mais_avec_un_en_tete_aussi(self) -> None:
+        url = self.urlImage(1)
+        self.assertEqual(self.lire(url).status_code, 200)
+        self.assertEqual(self.requete("GET", url, ABDOUL).status_code, 200)
+
+    def test_type_mime_selon_l_extension(self) -> None:
+        for nom, attendu in (
+            ("abc_a.png", "image/png"),
+            ("abc_b.PNG", "image/png"),
+            ("abc_c.gif", "image/gif"),
+            ("abc_d.GIF", "image/gif"),
+        ):
+            with self.subTest(nom=nom):
+                ticket = self.ticketAvecElements(("image", self.copieImage(nom)))
+                reponse = self.lire(f"/ticket/{ticket.ticketID}/image/{nom}")
+                self.assertEqual(reponse.status_code, 200)
+                self.assertEqual(reponse.mimetype, attendu)
+
+    def test_nom_a_echapper_dans_l_url(self) -> None:
+        """L'URL de la description reste valable avec accents, espaces, # et %."""
+        for nom in ("abc_capture écran.png", "abc_n°1 #2 100%.png"):
+            with self.subTest(nom=nom):
+                image = self.copieImage(nom)
+                ticket = self.ticketAvecElements(("image", image))
+                reponse = self.lire(self.urlImage(ticket.ticketID))
+                self.assertEqual(reponse.status_code, 200)
+                self.assertEqual(reponse.get_data(), image.read_bytes())
+
+    def test_nom_inconnu(self) -> None:
+        self.verifierIntrouvable("/ticket/1/image/inconnu.png")
+        self.verifierIntrouvable("/ticket/1/image/demo_connexion.PNG")
+        self.verifierIntrouvable("/ticket/1/image/%ED%A0%80.png")
+        reponse = self.lire("/ticket/1/image/inconnu.png")
+        self.assertEqual(reponse.get_json()["erreur"]["message"], "Image introuvable : inconnu.png")
+
+    def test_image_d_un_autre_ticket(self) -> None:
+        self.assertEqual(self.lire("/ticket/1/image/demo_connexion.png").status_code, 200)
+        self.verifierIntrouvable("/ticket/2/image/demo_connexion.png")
+
+    def test_ticket_inconnu(self) -> None:
+        self.verifierIntrouvable("/ticket/999/image/demo_connexion.png")
+
+    def test_aucun_fichier_hors_de_la_description(self) -> None:
+        """Ni remontée de dossier, ni autre fichier du serveur, écrits de toutes les façons."""
+        for nom in (
+            "../sauvegarde.json",
+            "../../donnees/demo.json",
+            "..%2F..%2Fdonnees%2Fdemo.json",
+            "%2E%2E%2F%2E%2E%2Fserveur.py",
+            "..\\..\\serveur.py",
+            "..%5C..%5Cserveur.py",
+            "demo.json",
+            "serveur.py",
+            "%2Fetc%2Fpasswd",
+            "C:%5CWindows%5Cwin.ini",
+        ):
+            with self.subTest(nom=nom):
+                reponse = self.lire(f"/ticket/1/image/{nom}")
+                self.assertEqual(reponse.status_code, 404, reponse.get_data(as_text=True)[:200])
+                self.assertEqual(reponse.mimetype, "application/json")
+
+    def test_seules_les_images_sont_servies(self) -> None:
+        """Un texte de la description a un chemin, mais pas d'URL : il n'est pas servi ici."""
+        self.images.mkdir(exist_ok=True)
+        texte = self.images / "notes.txt"
+        texte.write_text("Notes", encoding="utf-8")
+        video = RACINE / "ressources" / "demo_bug.mp4"
+        ticket = self.ticketAvecElements(("texte", texte), ("video", video))
+        self.verifierIntrouvable(f"/ticket/{ticket.ticketID}/image/notes.txt")
+        self.verifierIntrouvable(f"/ticket/{ticket.ticketID}/image/demo_bug.mp4")
+
+    def test_ticket_supprime(self) -> None:
+        image = self.copieImage()
+        ticket = self.ticketAvecElements(("image", image))
+        chemin = f"/ticket/{ticket.ticketID}/image/{image.name}"
+        self.assertEqual(self.lire(chemin).status_code, 200)
+        suppression = self.requete("DELETE", f"/ticket/{ticket.ticketID}", JULIEN)
+        self.assertEqual(suppression.status_code, 204)
+        self.verifierIntrouvable(chemin)
+
+    def test_fichier_disparu_du_disque(self) -> None:
+        image = self.copieImage()
+        ticket = self.ticketAvecElements(("image", image))
+        image.unlink()
+        self.verifierIntrouvable(f"/ticket/{ticket.ticketID}/image/{image.name}")
+
+    def test_fichier_supprimable_apres_lecture(self) -> None:
+        """La réponse ne garde pas le fichier ouvert : Windows refuserait sa suppression."""
+        image = self.copieImage()
+        ticket = self.ticketAvecElements(("image", image))
+        reponse = self.lire(f"/ticket/{ticket.ticketID}/image/{image.name}")
+        self.assertEqual(reponse.status_code, 200)
+        image.unlink()
+        self.assertEqual(reponse.get_data(), IMAGE_SOURCE.read_bytes())
+
+    def test_lecture_sans_effet(self) -> None:
+        version = self.contexte.version
+        self.lire(self.urlImage(1))
+        self.verifierRienEcrit(version)
+
+    def test_methode_absente(self) -> None:
+        reponse = self.requete("POST", "/ticket/1/image/demo_connexion.png", ADMIN)
+        self.verifierErreur(reponse, 405, "MethodeNonPermise")
 
 
 if __name__ == "__main__":
