@@ -10,8 +10,7 @@ from ihm.vues.fenetre_base import FenetreBase
 
 if TYPE_CHECKING:
     from ihm.controleurs.controleur_user import ControleurUser
-    from modele.ticket import Ticket
-    from sessions.session_edition import SessionEdition
+    from ihm.passerelle.objets_lecture import BrouillonLu, TicketLu, TicketRefLu
 
 # Onglets : (identifiant, texte, sans le nombre de lignes).
 ONGLETS: tuple[tuple[str, str], ...] = (
@@ -30,33 +29,27 @@ COLONNES: tuple[tuple[str, str, int, bool], ...] = (
     ("edition", "Édition", 90, False),
 )
 
-# Les sessions ne sont pas des sujets observables : la fenêtre relit leur état à ce rythme
-# pour voir aussitôt un brouillon mis en pause ou repris depuis F5.
-INTERVALLE_SESSIONS_MS = 500
-
 
 class VueListeUser(FenetreBase):
     """Seulement les tickets qui concernent l'utilisateur, en trois onglets.
 
-    Abonnée au dépôt (Observer) : un ticket créé, modifié ou retiré, par cet
-    utilisateur ou par un autre acteur, apparaît aussitôt. Les boutons suivent
-    les règles du contrôleur ; ils sont grisés quand le modèle refuserait.
+    Abonnée à la source de la session (Observer) : un ticket créé, modifié ou retiré, par
+    cet utilisateur ou par un autre acteur, dans cette GUI ou dans une autre, apparaît en
+    une seconde au plus. Les boutons suivent les règles du contrôleur ; ils sont grisés
+    quand le serveur refuserait.
     """
 
     def __init__(self, parent: tk.Misc, controleur: ControleurUser) -> None:
         super().__init__(
             parent, f"Gestion des tickets — {controleur.user.name} (User)",
-            [controleur.principal.systeme],
+            [controleur.source],
         )
         self._controleur: ControleurUser = controleur
         self._listes: dict[str, ttk.Treeview] = {}
         self._cadres: dict[str, ttk.Frame] = {}
-        self._tickets: dict[str, dict[str, Ticket]] = {onglet: {} for onglet, _ in ONGLETS}
-        self._signatureSessions: tuple[tuple[int, bool], ...] = ()
-        self._surveillance: str | None = None
+        self._tickets: dict[str, dict[str, TicketRefLu]] = {onglet: {} for onglet, _ in ONGLETS}
         self._construire()
         self.rafraichir()
-        self._surveillerSessions()
 
     # ------------------------------------------------------------------ construction
 
@@ -113,18 +106,26 @@ class VueListeUser(FenetreBase):
     # ------------------------------------------------------------------ lecture du modèle
 
     def rafraichir(self) -> None:
-        """Relit les trois onglets ; la sélection de chaque onglet est conservée par numéro."""
+        """Relit les trois onglets sur le serveur ; la sélection de chaque onglet est conservée
+        par numéro."""
         controleur = self._controleur
-        lignes: dict[str, list[tuple[Ticket, str, str]]] = {
-            "crees": [(t, t.status.name, controleur.etatEdition(t)) for t in controleur.ticketsCrees()],
-            "assignes": [
-                (t, t.status.name, controleur.etatEdition(t)) for t in controleur.ticketsAssignes()
-            ],
-            "brouillons": [
-                (session.ticket, "BROUILLON", self._etatSession(session))
-                for session in controleur.brouillons()
-            ],
+        controleur.chargerBrouillons()
+        lignes: dict[str, list[tuple[TicketRefLu, str, str, str]]] = {
+            onglet: [
+                (t, t.status.name, self._nomAssigne(t), controleur.etatEdition(t))
+                for t in tickets
+            ]
+            for onglet, tickets in (
+                ("crees", controleur.ticketsCrees()),
+                ("assignes", controleur.ticketsAssignes()),
+            )
         }
+        # Le ticket d'un brouillon de création n'est pas encore dans le dépôt : ni statut
+        # ni assigné.
+        lignes["brouillons"] = [
+            (brouillon.ticket, "BROUILLON", "—", self._etatBrouillon(brouillon))
+            for brouillon in controleur.brouillons()
+        ]
         for onglet, texte in ONGLETS:
             liste = self._listes[onglet]
             selectionnes = set(liste.selection())
@@ -132,9 +133,8 @@ class VueListeUser(FenetreBase):
             liste.delete(*liste.get_children())
             tickets = self._tickets[onglet]
             tickets.clear()
-            for ticket, statut, edition in lignes[onglet]:
+            for ticket, statut, assigne, edition in lignes[onglet]:
                 identifiant = str(ticket.ticketID)
-                assigne = ticket.assignedUser.name if ticket.assignedUser is not None else "—"
                 liste.insert(
                     "", "end", iid=identifiant,
                     values=(
@@ -146,22 +146,25 @@ class VueListeUser(FenetreBase):
             liste.selection_set([i for i in selectionnes if i in tickets])
             liste.yview_moveto(haut)
             self._onglets.tab(self._cadres[onglet], text=f"{texte} ({len(tickets)})")
-        self._signatureSessions = self._lireSessions()
         self._actualiserBoutons()
 
     @staticmethod
-    def _etatSession(session: SessionEdition) -> str:
-        return "en pause" if session.estEnPause else "en cours"
+    def _nomAssigne(ticket: TicketLu) -> str:
+        return ticket.assignedUser.name if ticket.assignedUser is not None else "—"
+
+    @staticmethod
+    def _etatBrouillon(brouillon: BrouillonLu) -> str:
+        return "en pause" if brouillon.estEnPause else "en cours"
 
     def _ongletCourant(self) -> str:
         page = self._onglets.select()
         return next(onglet for onglet, cadre in self._cadres.items() if str(cadre) == page)
 
-    def _ticketsDeLOnglet(self) -> list[Ticket]:
+    def _ticketsDeLOnglet(self) -> list[TicketRefLu]:
         onglet = self._ongletCourant()
         return [self._tickets[onglet][i] for i in self._listes[onglet].get_children()]
 
-    def _selection(self) -> Ticket | None:
+    def _selection(self) -> TicketRefLu | None:
         onglet = self._ongletCourant()
         selection = self._listes[onglet].selection()
         return self._tickets[onglet].get(selection[0]) if selection else None
@@ -182,25 +185,6 @@ class VueListeUser(FenetreBase):
         }
         for bouton, actif in actifs.items():
             bouton.configure(state="normal" if actif else "disabled")
-
-    # ------------------------------------------------------------------ surveillance des sessions
-
-    def _lireSessions(self) -> tuple[tuple[int, bool], ...]:
-        """État des sessions ouvertes de l'utilisateur : (numéro du ticket, en pause)."""
-        return tuple(
-            sorted((s.ticket.ticketID, s.estEnPause) for s in self._controleur.user.sessionsOuvertes)
-        )
-
-    def _surveillerSessions(self) -> None:
-        if self._lireSessions() != self._signatureSessions:
-            self.rafraichir()
-        self._surveillance = self.after(INTERVALLE_SESSIONS_MS, self._surveillerSessions)
-
-    def fermer(self) -> None:
-        if self._surveillance is not None:
-            self.after_cancel(self._surveillance)
-            self._surveillance = None
-        super().fermer()
 
     # ------------------------------------------------------------------ actions
 
@@ -242,7 +226,7 @@ class VueListeUser(FenetreBase):
             detail="Le ticket sera retiré du dépôt. Cette action ne peut pas être annulée.",
             icon="warning", default="no", parent=self,
         ):
-            # La liste se met à jour par le dépôt (ticketRetire), comme F2 et F6.
+            # La liste se met à jour par la source (ticketRetire), comme F2.
             self.executer(self._controleur.supprimer, ticket)
 
     def _soumettre(self) -> None:
