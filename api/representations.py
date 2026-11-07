@@ -15,6 +15,7 @@ from modele.enums import Statut
 
 if TYPE_CHECKING:
     from acteurs.utilisateur_systeme import UtilisateurSysteme
+    from api.registre_brouillons import EntreeBrouillon
     from description.description_texte import DescriptionTexte
     from description.element_description import ElementDescription
     from modele.commentaire import Commentaire
@@ -98,4 +99,22 @@ def rapport(r: RapportExecution, libelle: str, ticketId: int | None = None) -> d
         "nombreSucces": r.nombreSucces,
         "nombreRefus": r.nombreRefus,
         "ticketId": ticketId,
+    }
+
+
+def brouillon(entree: EntreeBrouillon) -> dict[str, Any]:
+    """Pour une création, le ticket n'est pas encore dans le dépôt : ni statut ni créateur."""
+    session = entree.session
+    ticket = session.ticket
+    return {
+        "id": entree.id,
+        "type": "creation" if entree.estCreation else "edition",
+        "libelle": session.libelle,
+        "ticket": {"id": ticket.ticketID, "titre": ticket.title, "priorite": ticket.priority.name},
+        "proprietaire": referenceActeur(entree.proprietaire),
+        "ouverte": session.estOuverte,
+        "enPause": session.estEnPause,
+        "modificationsEnAttente": session.modificationsEnAttente,
+        "nombreImages": entree.nombreImages,
+        "texteBrouillon": entree.texteBrouillon,
     }

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from flask import current_app
 
+from api.registre_brouillons import RegistreBrouillons
 from modele.observateur import ObservateurTickets
 from persistance.depot_json import DepotJSON, PersistanceException
 from persistance.stockage_images import StockageImages
@@ -65,6 +66,7 @@ class ContexteServeur:
     ) -> None:
         self._depot: DepotJSON = DepotJSON(cheminSauvegarde)
         self._stockage: StockageImages = StockageImages(dossierImages)
+        self._brouillons: RegistreBrouillons = RegistreBrouillons()
         self._verrou: threading.RLock = threading.RLock()
         self._systeme, self._sourceChargee = self._charger(Path(cheminDemo))
         # Abonné après le chargement : la version vaut 0 au démarrage.
@@ -82,6 +84,11 @@ class ContexteServeur:
     @property
     def stockage(self) -> StockageImages:
         return self._stockage
+
+    @property
+    def brouillons(self) -> RegistreBrouillons:
+        """Brouillons ouverts, en mémoire seulement : ils ne survivent pas à un redémarrage."""
+        return self._brouillons
 
     @property
     def verrou(self) -> threading.RLock:

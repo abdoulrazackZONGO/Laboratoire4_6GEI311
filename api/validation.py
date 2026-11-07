@@ -31,7 +31,18 @@ def lireCorps() -> dict[str, Any]:
         raise RequeteInvalide(f"Corps JSON illisible : {erreur}") from erreur
     if not isinstance(corps, dict):
         raise RequeteInvalide("Le corps JSON doit être un objet")
+    # Un surrogate isolé ("\ud800") est du JSON valide, mais il ne s'écrit pas en UTF-8. Accepté,
+    # il ferait échouer chaque sauvegarde et chaque réponse qui le contient, jusqu'au redémarrage.
+    try:
+        json.dumps(corps, ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError:
+        raise RequeteInvalide("Corps JSON illisible : caractère Unicode invalide") from None
     return corps
+
+
+def lireCorpsFacultatif() -> dict[str, Any]:
+    """Comme lireCorps(), mais une requête sans corps donne un objet vide."""
+    return lireCorps() if request.get_data().strip() else {}
 
 
 def verifierChamps(
@@ -63,11 +74,17 @@ def booleen(corps: dict[str, Any], nom: str) -> bool:
     return valeur
 
 
-def chaineNonVide(corps: dict[str, Any], nom: str) -> str:
-    """Chaîne qui contient autre chose que des blancs ; elle est rendue telle quelle."""
+def chaine(corps: dict[str, Any], nom: str) -> str:
+    """Chaîne, vide ou non ; c'est le métier qui refuse un texte saisi vide, par exemple."""
     valeur = _valeur(corps, nom)
     if not isinstance(valeur, str):
         raise RequeteInvalide(f"Le champ {nom} doit être une chaîne")
+    return valeur
+
+
+def chaineNonVide(corps: dict[str, Any], nom: str) -> str:
+    """Chaîne qui contient autre chose que des blancs ; elle est rendue telle quelle."""
+    valeur = chaine(corps, nom)
     if not valeur.strip():
         raise RequeteInvalide(f"Le champ {nom} ne doit pas être vide")
     return valeur

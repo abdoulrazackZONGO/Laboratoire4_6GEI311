@@ -86,3 +86,86 @@ class TestStockageImages(unittest.TestCase):
 
     def testSupprimerFichierAbsentSansEffet(self) -> None:
         self._stockage.supprimer("donnees/images/inexistant.png")
+
+    # ------------------------------------------------------------------ enregistrer
+
+    def testEnregistrerEcritLesOctets(self) -> None:
+        octets = imageOrigine.read_bytes()
+        chemin = self._stockage.enregistrer("capture_ecran.png", octets)
+        self.assertRegex(chemin, r"^donnees/images/[0-9a-f]{8}_capture_ecran\.png$")
+        self.assertEqual(Path(chemin).read_bytes(), octets)
+
+    def testEnregistrementUtilisableParLaSession(self) -> None:
+        chemin = self._stockage.enregistrer("capture.png", imageOrigine.read_bytes())
+        systeme = SystemeTickets()
+        createur = User(1, "Abdoul Razack", "abdoul.razack@uqac.ca", systeme)
+        ticket = Ticket(1, "Bug de connexion", Priorite.HAUTE)
+        createur.createTicket(ticket)
+        session = createur.ouvrirSessionEdition(ticket)
+        session.ajouterElement("image", chemin)
+        session.appliquer()
+        self.assertEqual(ticket.description.elements[0].chemin, chemin)
+
+    def testEnregistrerSousDeuxNomsUniques(self) -> None:
+        premiere = self._stockage.enregistrer("capture.png", b"un")
+        seconde = self._stockage.enregistrer("capture.png", b"deux")
+        self.assertNotEqual(premiere, seconde)
+        self.assertEqual(Path(premiere).read_bytes(), b"un")
+        self.assertEqual(Path(seconde).read_bytes(), b"deux")
+
+    def testEnregistrerExtensionSansTenirCompteDeLaCasse(self) -> None:
+        chemin = self._stockage.enregistrer("animation.GIF", b"x")
+        self.assertTrue(chemin.endswith("_animation.GIF"))
+
+    def testEnregistrerRefuseUnAutreFormat(self) -> None:
+        for nom in (
+            "photo.jpg", "page.html", "image", ".png", "", "/", "x.png.", "x.png ", "x.png.exe",
+        ):
+            with self.subTest(nom=nom):
+                with self.assertRaises(ArtefactInvalideException) as contexte:
+                    self._stockage.enregistrer(nom, b"x")
+                self.assertIn("Formats acceptés : .png, .gif", str(contexte.exception))
+        self.assertFalse(Path("donnees/images").exists())
+
+    def testEnregistrerNeSortJamaisDuDossier(self) -> None:
+        for nom in (
+            "../../evasion.png",
+            "..\\..\\evasion.png",
+            "C:\\Windows\\evasion.png",
+            "C:evasion.png",
+            "/tmp/evasion.png",
+            "\\\\serveur\\partage\\evasion.png",
+        ):
+            with self.subTest(nom=nom):
+                chemin = self._stockage.enregistrer(nom, b"x")
+                self.assertRegex(chemin, r"^donnees/images/[0-9a-f]{8}_evasion\.png$")
+                self.assertTrue(Path(chemin).is_file())
+        self.assertEqual([f.name for f in self._dossierTravail.iterdir()], ["donnees"])
+
+    def testEnregistrerRemplaceLesCaracteresInterdits(self) -> None:
+        for nom, attendu in (
+            ("x?.png", "x_.png"),
+            ('a*b<c>d|e"f.png', "a_b_c_d_e_f.png"),
+            ("ligne\nsuite.png", "ligne_suite.png"),
+            ("\ud800.png", "_.png"),
+        ):
+            with self.subTest(nom=nom):
+                chemin = self._stockage.enregistrer(nom, b"x")
+                self.assertEqual(Path(chemin).name[9:], attendu)
+                self.assertTrue(Path(chemin).is_file())
+
+    def testEnregistrerGardeLesAccents(self) -> None:
+        chemin = self._stockage.enregistrer("capture écran n°2.png", b"x")
+        self.assertTrue(chemin.endswith("_capture écran n°2.png"))
+        self.assertTrue(Path(chemin).is_file())
+
+    def testEnregistrerNomTropLongTronqueAvantExtension(self) -> None:
+        chemin = self._stockage.enregistrer("n" * 300 + ".PNG", b"x")
+        nom = Path(chemin).name[9:]
+        self.assertEqual(nom, "n" * 96 + ".PNG")
+        self.assertTrue(Path(chemin).is_file())
+
+    def testEnregistrementSupprimable(self) -> None:
+        chemin = self._stockage.enregistrer("capture.png", b"x")
+        self._stockage.supprimer(chemin)
+        self.assertFalse(Path(chemin).exists())
