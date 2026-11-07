@@ -9,12 +9,19 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
+from unittest import mock
 
 from flask import request
 
 from acteurs.user import User
 from api import creerApplication
-from api.contexte import CHEMIN_DEMO, CHEMIN_SAUVEGARDE, ContexteServeur, contexteCourant
+from api.contexte import (
+    ATTENTES_SAUVEGARDE,
+    CHEMIN_DEMO,
+    CHEMIN_SAUVEGARDE,
+    ContexteServeur,
+    contexteCourant,
+)
 from api.erreurs import (
     MESSAGE_ERREUR_INTERNE,
     ActeurNonIdentifie,
@@ -87,6 +94,31 @@ class TestVersionEtSauvegarde(TestAvecDossierTemporaire):
         createur = self.contexte.systeme.utilisateurParId(2)
         assert createur is not None and createur.role == "User"
         self.createur: User = createur  # type: ignore[assignment]
+
+    def test_sauvegarde_reessaie_si_le_fichier_est_tenu(self) -> None:
+        """Un autre processus de Windows peut tenir le fichier un court instant."""
+        with (
+            mock.patch("api.contexte.time.sleep") as attente,
+            mock.patch.object(
+                self.contexte.depot,
+                "sauvegarder",
+                side_effect=[PermissionError(), PermissionError(), None],
+            ) as sauvegarde,
+        ):
+            self.contexte.sauvegarder()
+        self.assertEqual(sauvegarde.call_count, 3)
+        self.assertEqual(attente.call_count, 2)
+
+    def test_sauvegarde_abandonne_apres_le_dernier_essai(self) -> None:
+        with (
+            mock.patch("api.contexte.time.sleep"),
+            mock.patch.object(
+                self.contexte.depot, "sauvegarder", side_effect=PermissionError()
+            ) as sauvegarde,
+        ):
+            with self.assertRaises(PermissionError):
+                self.contexte.sauvegarder()
+        self.assertEqual(sauvegarde.call_count, len(ATTENTES_SAUVEGARDE) + 1)
 
     def test_version_suit_ajout_modification_retrait(self) -> None:
         ticket = Ticket(1000, "Nouveau", Priorite.BASSE)

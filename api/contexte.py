@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,8 @@ if TYPE_CHECKING:
 CHEMIN_SAUVEGARDE = "donnees/sauvegarde.json"
 CHEMIN_DEMO = "donnees/demo.json"
 DOSSIER_IMAGES = "donnees/images"
+# Attentes entre les essais de sauvegarde (secondes) : 0,6 s au pire, sous le délai du client.
+ATTENTES_SAUVEGARDE: tuple[float, ...] = (0.02, 0.04, 0.08, 0.16, 0.3)
 
 
 class CompteurVersion(ObservateurTickets):
@@ -95,8 +98,20 @@ class ContexteServeur:
             return self._compteur.valeur
 
     def sauvegarder(self) -> None:
-        """Écrit tout le système dans la sauvegarde ; ne touche pas à la version."""
+        """Écrit tout le système dans la sauvegarde ; ne touche pas à la version.
+
+        Sous Windows, un autre processus (indexation, antivirus) peut tenir le fichier
+        quelques millisecondes juste après son remplacement : os.replace() lève alors
+        PermissionError. Le lab 3 sauvegardait rarement ; le serveur le fait à chaque
+        modification, d'où ces nouveaux essais. Après le dernier, l'erreur remonte (500).
+        """
         with self._verrou:
+            for attente in ATTENTES_SAUVEGARDE:
+                try:
+                    self._depot.sauvegarder(self._systeme)
+                    return
+                except PermissionError:
+                    time.sleep(attente)
             self._depot.sauvegarder(self._systeme)
 
     # ------------------------------------------------------------------ chargement

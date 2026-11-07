@@ -82,6 +82,27 @@ def enumParNom(corps: dict[str, Any], nom: str, typeEnum: type[E]) -> E:
     raise RequeteInvalide(f"Valeur invalide pour {nom} : {valeur!r} (attendu : {permises})")
 
 
+def listeEntiers(corps: dict[str, Any], nom: str) -> list[int]:
+    """Liste non vide d'entiers, rendue dans l'ordre reçu, doublons compris."""
+    valeur = _valeur(corps, nom)
+    if not isinstance(valeur, list):
+        raise RequeteInvalide(f"Le champ {nom} doit être une liste d'entiers")
+    if not valeur:
+        raise RequeteInvalide(f"Le champ {nom} ne doit pas être vide")
+    if any(isinstance(v, bool) or not isinstance(v, int) for v in valeur):
+        raise RequeteInvalide(f"Le champ {nom} doit être une liste d'entiers")
+    return valeur
+
+
+def assigneIdSelon(corps: dict[str, Any], exige: bool) -> int | None:
+    """assigneId : obligatoire pour une assignation, interdit pour toute autre action."""
+    if exige:
+        return entier(corps, "assigneId")
+    if "assigneId" in corps:
+        raise RequeteInvalide("Le champ assigneId n'est permis que pour une assignation")
+    return None
+
+
 # ------------------------------------------------------------------ paramètres de requête
 # Ils arrivent toujours sous forme de texte. enumParNom() s'y applique telle quelle.
 

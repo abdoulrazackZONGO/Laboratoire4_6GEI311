@@ -11,12 +11,14 @@ from flask import Flask
 
 from api.erreurs import RequeteInvalide
 from api.validation import (
+    assigneIdSelon,
     booleen,
     chaineNonVide,
     entier,
     enumParNom,
     lireCorps,
     lireParametres,
+    listeEntiers,
     parametreEntier,
     verifierChamps,
 )
@@ -117,6 +119,47 @@ class TestTypes(unittest.TestCase):
                     f"Valeur invalide pour champ : {valeur!r} "
                     "(attendu : OUVERT, ASSIGNE, VALIDATION, TERMINE, FERME)",
                 )
+
+
+class TestListeEtAssigne(unittest.TestCase):
+    def verifierRefus(self, fonction, *arguments: Any) -> str:
+        with self.assertRaises(RequeteInvalide) as contexte:
+            fonction(*arguments)
+        return str(contexte.exception)
+
+    def test_liste_d_entiers(self) -> None:
+        self.assertEqual(listeEntiers({"ids": [6, 7, 6]}, "ids"), [6, 7, 6])
+
+    def test_liste_refusee(self) -> None:
+        for valeur in ("6", 6, None, [6, "7"], [6, True], [6, 7.5], [None]):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(
+                    self.verifierRefus(listeEntiers, {"ids": valeur}, "ids"),
+                    "Le champ ids doit être une liste d'entiers",
+                )
+        self.assertEqual(
+            self.verifierRefus(listeEntiers, {"ids": []}, "ids"), "Le champ ids ne doit pas être vide"
+        )
+        self.assertEqual(
+            self.verifierRefus(listeEntiers, {}, "ids"), "Champ obligatoire manquant : ids"
+        )
+
+    def test_assigne_exige(self) -> None:
+        self.assertEqual(assigneIdSelon({"assigneId": 3}, True), 3)
+        self.assertEqual(
+            self.verifierRefus(assigneIdSelon, {}, True), "Champ obligatoire manquant : assigneId"
+        )
+        self.assertEqual(
+            self.verifierRefus(assigneIdSelon, {"assigneId": "3"}, True),
+            "Le champ assigneId doit être un entier",
+        )
+
+    def test_assigne_interdit(self) -> None:
+        self.assertIsNone(assigneIdSelon({}, False))
+        self.assertEqual(
+            self.verifierRefus(assigneIdSelon, {"assigneId": 3}, False),
+            "Le champ assigneId n'est permis que pour une assignation",
+        )
 
 
 class TestParametres(unittest.TestCase):

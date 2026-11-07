@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from flask import Flask
 
-from api import routes_acteurs, routes_systeme, routes_tickets
+from api import routes_acteurs, routes_lots, routes_systeme, routes_tickets
 from api.erreurs import enregistrerGestionnaires
 
 if TYPE_CHECKING:
@@ -26,4 +26,5 @@ def creerApplication(contexte: ContexteServeur) -> Flask:
     app.register_blueprint(routes_systeme.blueprint)
     app.register_blueprint(routes_acteurs.blueprint)
     app.register_blueprint(routes_tickets.blueprint)
+    app.register_blueprint(routes_lots.blueprint)
     return app
