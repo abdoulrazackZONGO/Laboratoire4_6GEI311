@@ -50,6 +50,8 @@ class VueListeUser(FenetreBase):
         self._tickets: dict[str, dict[str, TicketRefLu]] = {onglet: {} for onglet, _ in ONGLETS}
         self._construire()
         self.rafraichir()
+        # Les brouillons ne changent pas /version : F4 et F5 préviennent par le principal.
+        controleur.principal.ecouterBrouillons(self.rafraichir)
 
     # ------------------------------------------------------------------ construction
 
@@ -155,6 +157,10 @@ class VueListeUser(FenetreBase):
     @staticmethod
     def _etatBrouillon(brouillon: BrouillonLu) -> str:
         return "en pause" if brouillon.estEnPause else "en cours"
+
+    def fermer(self) -> None:
+        self._controleur.principal.oublierBrouillons(self.rafraichir)
+        super().fermer()
 
     def _ongletCourant(self) -> str:
         page = self._onglets.select()

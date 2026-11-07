@@ -1,108 +1,170 @@
 """Contrôleur de l'éditeur de description (F5) : sans tkinter, testable sans écran."""
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
+from ihm.passerelle.erreurs import ReponseInvalide, RequeteInvalide, RequeteTropVolumineuse
+from ihm.passerelle.objets_lecture import BrouillonLu, RapportLu
 from modele.exceptions import ArtefactInvalideException
 
 if TYPE_CHECKING:
     from ihm.controleurs.controleur_principal import ControleurPrincipal
-    from sessions.session_edition import SessionEdition
+    from ihm.passerelle.client_api import ClientAPI
+    from ihm.passerelle.objets_lecture import TicketRefLu
+    from ihm.passerelle.source_tickets import SourceTickets
+
+# Refus propres à une image : les autres images de la même sélection sont quand même ajoutées.
+# ArtefactInvalideException : format refusé par le modèle ; RequeteInvalide : contenu illisible ;
+# RequeteTropVolumineuse : plus de 5 Mo.
+REFUS_IMAGE: tuple[type[Exception], ...] = (
+    ArtefactInvalideException,
+    RequeteInvalide,
+    RequeteTropVolumineuse,
+)
 
 
 class ControleurEdition:
-    """Un seul par session (registre du ControleurPrincipal) : survit à la fermeture de F5.
+    """Un seul par brouillon (registre du ControleurPrincipal) : survit à la fermeture de F5.
 
-    Il garde le texte tapé pendant la pause et la pile des copies d'images, alignée
-    sur la pile de la session : le chemin de la copie pour une image, None pour un
-    commentaire. Un undo ou un abandon supprime ainsi la copie devenue inutile.
+    Le brouillon vit sur le serveur : sa pile de modifications, le texte gardé pendant la
+    pause et les copies d'images. Le contrôleur n'en garde que la dernière représentation
+    reçue, que chaque route du brouillon renvoie à jour. Après l'abandon ou l'application,
+    le brouillon n'existe plus sur le serveur : le contrôleur le marque fermé.
     """
 
-    def __init__(self, principal: ControleurPrincipal, session: SessionEdition) -> None:
+    def __init__(
+        self,
+        principal: ControleurPrincipal,
+        client: ClientAPI,
+        brouillon: BrouillonLu,
+        source: SourceTickets,
+    ) -> None:
         self._principal: ControleurPrincipal = principal
-        self._session: SessionEdition = session
-        # Calculé une seule fois : après appliquer(), le ticket entre dans le dépôt
-        # et le test basculerait.
-        self._estCreation: bool = not principal.systeme.contient(session.ticket)
-        self._texteBrouillon: str = ""
-        self._copies: list[str | None] = []
+        self._client: ClientAPI = client
+        self._brouillon: BrouillonLu = brouillon
+        self._source: SourceTickets = source
+        self._ferme: bool = False
+
+    # ------------------------------------------------------------------ lecture du brouillon
 
     @property
-    def session(self) -> SessionEdition:
-        return self._session
+    def brouillon(self) -> BrouillonLu:
+        """Dernière représentation reçue du serveur."""
+        return self._brouillon
+
+    @property
+    def brouillonId(self) -> int:
+        return self._brouillon.id
+
+    @property
+    def ticket(self) -> TicketRefLu:
+        """Ticket visé : numéro, titre et priorité (pour une création, pas encore dans le dépôt)."""
+        return self._brouillon.ticket
 
     @property
     def estCreation(self) -> bool:
-        """Vrai pour une session de création : son ticket était hors du dépôt."""
-        return self._estCreation
+        """Vrai pour un brouillon de création : il reste vrai après l'application."""
+        return self._brouillon.estCreation
+
+    @property
+    def libelle(self) -> str:
+        return self._brouillon.libelle
+
+    @property
+    def estOuverte(self) -> bool:
+        return not self._ferme and self._brouillon.estOuverte
+
+    @property
+    def estEnPause(self) -> bool:
+        return self._brouillon.estEnPause
+
+    @property
+    def modificationsEnAttente(self) -> list[str]:
+        return [] if self._ferme else self._brouillon.modificationsEnAttente
 
     @property
     def texteBrouillon(self) -> str:
-        """Texte tapé dans F5, gardé pendant la pause."""
-        return self._texteBrouillon
+        """Texte tapé dans F5, gardé par le serveur pendant la pause."""
+        return "" if self._ferme else self._brouillon.texteBrouillon
 
     @property
     def nombreImages(self) -> int:
         """Images en attente : F5 grise « Créer le ticket » s'il n'y a ni texte ni image."""
-        return sum(1 for copie in self._copies if copie is not None)
+        return 0 if self._ferme else self._brouillon.nombreImages
+
+    def actualiser(self, brouillon: BrouillonLu) -> None:
+        """Remplace la représentation gardée : la reprise depuis F3 la relit sur le serveur."""
+        self._brouillon = brouillon
+        self._ferme = False
+
+    # ------------------------------------------------------------------ ajouts et undo
 
     def ajouterImages(self, chemins: list[str]) -> list[str]:
-        """Agrégat : ajoute chaque image et retourne les messages des images refusées."""
+        """Agrégat : envoie chaque image et retourne les messages des images refusées.
+
+        Une image illisible ou refusée par le serveur n'empêche pas les suivantes. Un autre
+        refus (brouillon en pause ou fermé, serveur injoignable) arrête la sélection : les
+        images déjà envoyées restent dans le brouillon.
+        """
         refus: list[str] = []
         for chemin in chemins:
-            copie: str | None = None
+            nom = os.path.basename(chemin)
             try:
-                copie = self._principal.stockage.copier(chemin)
-                self._session.ajouterElement("image", copie)
-            except ArtefactInvalideException as erreur:
-                self._supprimerCopie(copie)
-                refus.append(str(erreur))
-            except Exception:
-                # Session en pause ou fermée : le refus remonte, sans laisser de copie orpheline.
-                self._supprimerCopie(copie)
-                raise
-            else:
-                self._copies.append(copie)
+                with open(chemin, "rb") as fichier:
+                    octets = fichier.read()
+            except OSError as erreur:
+                refus.append(f"{nom} : fichier illisible ({erreur.strerror or erreur})")
+                continue
+            try:
+                self._recevoir(self._client.ajouterImage(self.brouillonId, nom, octets))
+            except REFUS_IMAGE as erreur:
+                refus.append(f"{nom} : {erreur}")
         return refus
 
     def commenter(self, texte: str) -> None:
-        self._session.ajouterCommentaire(texte)
-        self._copies.append(None)
+        self._recevoir(self._client.ajouterCommentaire(self.brouillonId, texte))
 
     def annulerDerniere(self) -> str:
-        """Retire la dernière modification en attente et supprime sa copie d'image."""
-        libelle = self._session.annulerDerniere()
-        self._supprimerCopie(self._copies.pop())
-        return libelle
+        """Retire la dernière modification en attente ; le serveur supprime la copie d'image."""
+        reponse = self._client.annulerDerniereModification(self.brouillonId)
+        if not isinstance(reponse, dict) or not isinstance(reponse.get("libelleRetire"), str):
+            raise ReponseInvalide("Réponse de l'annulation sans libelleRetire", 200)
+        self._recevoir(reponse.get("brouillon"))
+        return reponse["libelleRetire"]
+
+    # ------------------------------------------------------------------ cycle de vie
 
     def mettreEnPause(self, texte: str) -> None:
-        """Le texte n'entre pas dans la session : il est gardé jusqu'à la reprise."""
-        self._texteBrouillon = texte
-        self._session.mettreEnPause()
+        """Le texte tapé n'entre pas dans la description : le serveur le garde jusqu'à la reprise."""
+        self._recevoir(
+            self._client.modifierBrouillon(self.brouillonId, enPause=True, texteBrouillon=texte)
+        )
+        self._principal.signalerBrouillons()
 
     def abandonner(self) -> None:
-        self._session.abandonner()
-        for copie in self._copies:
-            self._supprimerCopie(copie)
-        self._copies.clear()
-        self._texteBrouillon = ""
+        """Le serveur supprime le brouillon et ses copies d'images ; le ticket reste inchangé."""
+        self._client.abandonnerBrouillon(self.brouillonId)
+        self._ferme = True
+        self._principal.signalerBrouillons()
 
-    def appliquer(self, texte: str) -> None:
-        """Ajoute le texte tapé à la description, applique, puis affiche le rapport."""
-        texteAjoute = bool(texte.strip())
-        if texteAjoute:
-            self._session.ajouterTexteSaisi(texte.strip())
-        try:
-            rapport = self._session.appliquer()
-        except Exception:
-            # Le texte est retiré pour ne pas être ajouté deux fois au prochain essai.
-            if texteAjoute:
-                self._session.annulerDerniere()
-            raise
-        self._copies.clear()
-        self._texteBrouillon = ""
-        self._principal.afficherRapport(rapport, self._session.libelle)
+    def appliquer(self, texte: str) -> RapportLu:
+        """Le texte tapé est ajouté à la description, puis le brouillon est appliqué au mieux.
 
-    def _supprimerCopie(self, copie: str | None) -> None:
-        if copie is not None:
-            self._principal.stockage.supprimer(copie)
+        En cas de refus, le serveur retire le texte qu'il venait d'ajouter : un nouvel essai
+        ne le doublera pas. Après le succès, la source est relue (le ticket créé ou modifié
+        apparaît aussitôt dans F2 et F3) et le rapport s'affiche.
+        """
+        texteAjoute = texte.strip()
+        rapport = RapportLu.depuisJSON(
+            self._client.appliquerBrouillon(self.brouillonId, texteAjoute or None)
+        )
+        self._ferme = True
+        self._source.rafraichir()
+        self._principal.signalerBrouillons()
+        self._principal.afficherRapport(rapport, rapport.libelle)
+        return rapport
+
+    def _recevoir(self, donnees: object) -> None:
+        """Chaque route du brouillon renvoie sa représentation à jour : on la garde."""
+        self._brouillon = BrouillonLu.depuisJSON(donnees)  # type: ignore[arg-type]

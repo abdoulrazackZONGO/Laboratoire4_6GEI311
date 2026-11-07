@@ -27,8 +27,10 @@ class ServeurEssai:
     def __init__(self) -> None:
         self._dossier = tempfile.TemporaryDirectory()
         dossier = Path(self._dossier.name)
+        # Copies des images envoyées par les brouillons.
+        self.dossierImages = dossier / "images"
         self.contexte = ContexteServeur(
-            cheminSauvegarde=dossier / "sauvegarde.json", dossierImages=str(dossier / "images")
+            cheminSauvegarde=dossier / "sauvegarde.json", dossierImages=str(self.dossierImages)
         )
         self._flask = creerApplication(self.contexte).test_client()
         # (méthode, chemin) de chaque requête reçue, pour vérifier ce que le client envoie.
