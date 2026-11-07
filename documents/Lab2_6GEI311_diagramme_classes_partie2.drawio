@@ -1536,7 +1536,7 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="p2-t1" value="&lt;b&gt;Vue des instanciations&lt;/b&gt; — dépendances «create» (la classe source construit la cible) et «use» (appel d&#39;une méthode de classe)" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Helvetica;fontSize=16;fontColor=#333333;fontStyle=0;strokeColor=none;fillColor=none;spacing=0;" vertex="1" parent="1">
+        <mxCell id="p2-t1" value="&lt;b&gt;Vue des instanciations&lt;/b&gt; - dépendances «create» (la classe source construit la cible) et «use» (appel d&#39;une méthode de classe)" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Helvetica;fontSize=16;fontColor=#333333;fontStyle=0;strokeColor=none;fillColor=none;spacing=0;" vertex="1" parent="1">
           <mxGeometry x="40" y="28" width="1700" height="30" as="geometry" />
         </mxCell>
         <mxCell id="p2-t2" value="&lt;b&gt;A.&lt;/b&gt; Sessions, commandes et fabrique de description &lt;font color=&#39;#6B6B6B&#39;&gt;(patrons Command et Factory Method)&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Helvetica;fontSize=13;fontColor=#333333;fontStyle=0;strokeColor=none;fillColor=none;spacing=0;" vertex="1" parent="1">
@@ -1907,7 +1907,7 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="p3-t1" value="&lt;b&gt;Vue des exceptions&lt;/b&gt; — chaque flèche pointillée est une dépendance «throw» (la classe source lève l&#39;exception avec &lt;i&gt;raise&lt;/i&gt;)" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Helvetica;fontSize=16;fontColor=#333333;fontStyle=0;strokeColor=none;fillColor=none;spacing=0;" vertex="1" parent="1">
+        <mxCell id="p3-t1" value="&lt;b&gt;Vue des exceptions&lt;/b&gt; - chaque flèche pointillée est une dépendance «throw» (la classe source lève l&#39;exception avec &lt;i&gt;raise&lt;/i&gt;)" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Helvetica;fontSize=16;fontColor=#333333;fontStyle=0;strokeColor=none;fillColor=none;spacing=0;" vertex="1" parent="1">
           <mxGeometry x="40" y="28" width="1600" height="30" as="geometry" />
         </mxCell>
         <mxCell id="p3-p2" value="modele · exceptions.py" style="shape=folder;tabWidth=173;tabHeight=24;tabPosition=left;html=1;whiteSpace=wrap;fillColor=#FAFAFA;strokeColor=#9A9A9A;strokeWidth=1;fontFamily=Helvetica;fontSize=12;fontStyle=1;fontColor=#333333;align=left;verticalAlign=top;spacingLeft=10;spacingTop=-1;container=0;recursiveResize=0;" vertex="1" parent="1">
@@ -2064,7 +2064,7 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="p4-t1" value="&lt;b&gt;Cycle de vie d&#39;un ticket&lt;/b&gt; — diagramme d&#39;états correspondant aux classes du paquetage &lt;i&gt;etats&lt;/i&gt; (transitions exactement celles du code)" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Helvetica;fontSize=16;fontColor=#333333;fontStyle=0;strokeColor=none;fillColor=none;spacing=0;" vertex="1" parent="1">
+        <mxCell id="p4-t1" value="&lt;b&gt;Cycle de vie d&#39;un ticket&lt;/b&gt; - diagramme d&#39;états correspondant aux classes du paquetage &lt;i&gt;etats&lt;/i&gt; (transitions exactement celles du code)" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Helvetica;fontSize=16;fontColor=#333333;fontStyle=0;strokeColor=none;fillColor=none;spacing=0;" vertex="1" parent="1">
           <mxGeometry x="40" y="28" width="1600" height="30" as="geometry" />
         </mxCell>
         <mxCell id="p4-init" value="" style="ellipse;html=1;fillColor=#333333;strokeColor=#333333;" vertex="1" parent="1">

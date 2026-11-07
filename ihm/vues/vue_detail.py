@@ -33,7 +33,7 @@ class VueDetail(FenetreBase):
 
     def __init__(self, parent: tk.Misc, controleur: ControleurDetail) -> None:
         super().__init__(
-            parent, f"Gestion des tickets — Ticket #{controleur.identifiantCourant}",
+            parent, f"Gestion des tickets : Ticket #{controleur.identifiantCourant}",
             [controleur.source],
         )
         self._controleur: ControleurDetail = controleur
@@ -135,19 +135,19 @@ class VueDetail(FenetreBase):
     def rafraichir(self) -> None:
         """Redessine le ticket courant, tel que le contrôleur l'a lu, par ses propriétés."""
         ticket = self._controleur.ticket
-        self.title(f"Gestion des tickets — Ticket #{ticket.ticketID} : {ticket.title}")
+        self.title(f"Gestion des tickets - Ticket #{ticket.ticketID} : {ticket.title}")
         self._position.configure(
             text=f"Ticket {self._controleur.position} sur {self._controleur.nombre}"
         )
         self._boutonPrecedent.configure(state="normal" if self._controleur.peutReculer else "disabled")
         self._boutonSuivant.configure(state="normal" if self._controleur.peutAvancer else "disabled")
-        self._titre.configure(text=f"Ticket #{ticket.ticketID} — {ticket.title}")
+        self._titre.configure(text=f"Ticket #{ticket.ticketID} - {ticket.title}")
 
         valeurs = {
             "statut": ticket.status.name,
             "priorite": ticket.priority.name,
-            "createur": ticket.creator.name if ticket.creator is not None else "—",
-            "assigne": ticket.assignedUser.name if ticket.assignedUser is not None else "—",
+            "createur": ticket.creator.name if ticket.creator is not None else "-",
+            "assigne": ticket.assignedUser.name if ticket.assignedUser is not None else "-",
             "creation": str(ticket.creationDate),
             "miseAJour": str(ticket.updateDate),
         }

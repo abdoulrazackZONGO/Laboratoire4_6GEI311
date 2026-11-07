@@ -196,6 +196,26 @@ class TestApplication(TestAvecDossierTemporaire):
         self.assertEqual(reponse.get_json()["erreur"]["type"], "MethodeNonPermise")
         self.assertIn("GET", reponse.headers["Allow"])
 
+    def test_json_annonce_utf8(self) -> None:
+        """Sans charset, Windows PowerShell 5.1 affiche « Ã© » au lieu de « é »."""
+        enTete = {"X-Acteur-Id": "1"}
+        for nom, reponse in (
+            ("succès", self.client.get("/ticket/1/commentaires", headers=enTete)),
+            ("erreur de l'API", self.client.get("/ticket/99", headers=enTete)),
+            ("erreur de Flask", self.client.post("/version")),
+            ("chemin inconnu", self.client.get("/inexistant")),
+        ):
+            with self.subTest(nom=nom):
+                self.assertEqual(reponse.headers["Content-Type"], "application/json; charset=utf-8")
+                self.assertEqual(reponse.mimetype, "application/json")
+                self.assertIsNotNone(reponse.get_json())
+        texte = self.client.get("/ticket/1/commentaires", headers=enTete).get_data()
+        self.assertIn("écran".encode("utf-8"), texte)
+
+    def test_image_garde_son_type(self) -> None:
+        reponse = self.client.get("/ticket/1/image/demo_connexion.png")
+        self.assertEqual(reponse.headers["Content-Type"], "image/png")
+
 
 class TestGestionnairesErreurs(TestAvecDossierTemporaire):
     """Des routes d'essai, ajoutées à cette seule application, lèvent chaque exception."""

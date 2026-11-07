@@ -23,7 +23,7 @@ class VueRapport(FenetreBase):
     """
 
     def __init__(self, parent: tk.Misc, rapport: RapportLu, libelle: str) -> None:
-        super().__init__(parent, f"Gestion des tickets — Rapport : {libelle}", [])
+        super().__init__(parent, f"Gestion des tickets - Rapport : {libelle}", [])
         self._rapport: RapportLu = rapport
         self._libelle: str = libelle
         self._construire()
@@ -39,7 +39,7 @@ class VueRapport(FenetreBase):
         self._policeMotif.configure(size=max(self._policeMotif.actual("size") - 1, 8))
 
         rapport = self._rapport
-        ttk.Label(cadre, text=f"Rapport d'exécution — {self._libelle}", font=self._policeGras).pack(
+        ttk.Label(cadre, text=f"Rapport d'exécution - {self._libelle}", font=self._policeGras).pack(
             anchor="w"
         )
         bilan = ttk.Frame(cadre)

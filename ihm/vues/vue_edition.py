@@ -19,9 +19,9 @@ class VueEdition(FenetreBase):
     def __init__(self, parent: tk.Misc, controleur: ControleurEdition) -> None:
         ticket = controleur.ticket
         if controleur.estCreation:
-            titre = f"Nouveau ticket #{ticket.ticketID} — {ticket.title}"
+            titre = f"Nouveau ticket #{ticket.ticketID} - {ticket.title}"
         else:
-            titre = f"Édition du ticket #{ticket.ticketID} — {ticket.title}"
+            titre = f"Édition du ticket #{ticket.ticketID} - {ticket.title}"
         super().__init__(parent, titre, [])
         self._controleur: ControleurEdition = controleur
         self._commentaire = tk.StringVar(self)

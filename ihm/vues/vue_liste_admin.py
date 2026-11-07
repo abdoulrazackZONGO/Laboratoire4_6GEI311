@@ -44,7 +44,7 @@ class VueListeAdmin(FenetreBase):
 
     def __init__(self, parent: tk.Misc, controleur: ControleurAdmin) -> None:
         super().__init__(
-            parent, f"Gestion des tickets — {controleur.admin.name} (Admin)",
+            parent, f"Gestion des tickets - {controleur.admin.name} (Admin)",
             [controleur.source],
         )
         self._controleur: ControleurAdmin = controleur
@@ -119,8 +119,8 @@ class VueListeAdmin(FenetreBase):
         self._tickets.clear()
         for ticket in self._controleur.tickets(statut):
             identifiant = str(ticket.ticketID)
-            createur = ticket.creator.name if ticket.creator is not None else "—"
-            assigne = ticket.assignedUser.name if ticket.assignedUser is not None else "—"
+            createur = ticket.creator.name if ticket.creator is not None else "-"
+            assigne = ticket.assignedUser.name if ticket.assignedUser is not None else "-"
             self._liste.insert(
                 "", "end", iid=identifiant,
                 values=(
