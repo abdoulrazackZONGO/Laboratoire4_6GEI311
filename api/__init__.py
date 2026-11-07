@@ -23,6 +23,9 @@ def creerApplication(contexte: ContexteServeur) -> Flask:
     # Accents lisibles et champs dans l'ordre des représentations, pas triés.
     app.json.ensure_ascii = False  # type: ignore[attr-defined]
     app.json.sort_keys = False  # type: ignore[attr-defined]
+    # JSON est toujours en UTF-8, mais Windows PowerShell 5.1 lit autrement une réponse qui
+    # ne le dit pas (« Ã© » au lieu de « é »). Erreurs comprises : elles passent par jsonify().
+    app.json.mimetype = "application/json; charset=utf-8"  # type: ignore[attr-defined]
     app.extensions["contexte"] = contexte
     enregistrerGestionnaires(app)
     app.register_blueprint(routes_systeme.blueprint)
