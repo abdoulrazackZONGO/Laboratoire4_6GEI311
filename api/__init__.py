@@ -16,7 +16,9 @@ TAILLE_MAXIMALE_REQUETE = 8 * 1024 * 1024
 
 def creerApplication(contexte: ContexteServeur) -> Flask:
     """Fabrique de l'application : aucun état global, les tests en créent une par contexte."""
-    app = Flask(__name__)
+    # Sans dossier static : Flask ajouterait sinon GET /static/<filename>, hors du contrat.
+    # La page web du bonus est servie par routes_systeme, comme toute autre route.
+    app = Flask(__name__, static_folder=None)
     app.config["MAX_CONTENT_LENGTH"] = TAILLE_MAXIMALE_REQUETE
     # Accents lisibles et champs dans l'ordre des représentations, pas triés.
     app.json.ensure_ascii = False  # type: ignore[attr-defined]
