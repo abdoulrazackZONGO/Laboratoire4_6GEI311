@@ -171,7 +171,7 @@ class VueListeAdmin(FenetreBase):
         # F6 parcourt toute la sélection avec ‹ Précédent / Suivant ›, en partant du ticket actif.
         actif = self._tickets.get(self._liste.focus())
         index = selection.index(actif) if actif in selection else 0
-        self.executer(self._controleur.principal.ouvrirDetail, selection, index)
+        self.executer(self._controleur.principal.ouvrirDetail, self._controleur.admin, selection, index)
 
     def _ouvrirLot(self, action: str) -> None:
         selection = self._selection()

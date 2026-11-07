@@ -1,20 +1,19 @@
 """F6 : détail d'un ticket, commun aux deux rôles ; visualisation des descriptions."""
 from __future__ import annotations
 
+import base64
 import math
-import os
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
-from ihm.vues.fenetre_base import FenetreBase
+from ihm.passerelle.erreurs import EXCEPTIONS_PASSERELLE, RessourceIntrouvable
+from ihm.vues.fenetre_base import EXCEPTIONS_AFFICHEES, FenetreBase, titreErreur
 
 if TYPE_CHECKING:
-    from description.description_texte import DescriptionTexte
-    from description.element_description import ElementDescription
-    from modele.systeme_tickets import SystemeTickets
-    from modele.ticket import Ticket
+    from ihm.controleurs.controleur_detail import ControleurDetail
+    from ihm.passerelle.objets_lecture import ElementLu, TicketLu
 
 # Au-delà de cette largeur, une image est réduite (subsample) pour tenir dans la fenêtre.
 LARGEUR_MAX_IMAGE = 400
@@ -24,20 +23,20 @@ class VueDetail(FenetreBase):
     """Lecture seule : la vue n'utilise que les propriétés publiques du ticket et de ses éléments.
 
     Elle parcourt la liste reçue de F2 ou de F3 avec ‹ Précédent et Suivant ›.
-    Abonnée au dépôt (Observer) : si un autre acteur commente ou change le
-    statut du ticket affiché, l'affichage suit ; si le ticket est retiré, un
-    message l'annonce, puis F6 passe au ticket suivant ou se ferme.
+    Abonnée à la source des tickets de la session : si un autre acteur commente ou change le
+    statut du ticket affiché, l'affichage suit ; si le ticket est retiré, un message
+    l'annonce, puis F6 passe au ticket suivant ou se ferme.
+
+    Le ticket n'est jamais comparé avec `is` : chaque rafraîchissement de la source recrée les
+    objets, seul l'identifiant les distingue. Les images sont téléchargées par le contrôleur.
     """
 
-    def __init__(
-        self, parent: tk.Misc, systeme: SystemeTickets, tickets: list[Ticket], index: int
-    ) -> None:
+    def __init__(self, parent: tk.Misc, controleur: ControleurDetail) -> None:
         super().__init__(
-            parent, f"Gestion des tickets — Ticket #{tickets[index].ticketID}", [systeme]
+            parent, f"Gestion des tickets — Ticket #{controleur.identifiantCourant}",
+            [controleur.source],
         )
-        self._systeme: SystemeTickets = systeme
-        self._tickets: list[Ticket] = list(tickets)
-        self._index: int = index
+        self._controleur: ControleurDetail = controleur
         # PhotoImage doit rester référencée, sinon tkinter efface l'image affichée.
         self._images: list[tk.PhotoImage] = []
         self._construire()
@@ -133,18 +132,15 @@ class VueDetail(FenetreBase):
 
     # ------------------------------------------------------------------ lecture du modèle
 
-    @property
-    def _ticket(self) -> Ticket:
-        return self._tickets[self._index]
-
     def rafraichir(self) -> None:
-        """Relit le ticket courant par ses propriétés en lecture seule et redessine tout."""
-        ticket = self._ticket
-        n = len(self._tickets)
+        """Redessine le ticket courant, tel que le contrôleur l'a lu, par ses propriétés."""
+        ticket = self._controleur.ticket
         self.title(f"Gestion des tickets — Ticket #{ticket.ticketID} : {ticket.title}")
-        self._position.configure(text=f"Ticket {self._index + 1} sur {n}")
-        self._boutonPrecedent.configure(state="normal" if self._index > 0 else "disabled")
-        self._boutonSuivant.configure(state="normal" if self._index < n - 1 else "disabled")
+        self._position.configure(
+            text=f"Ticket {self._controleur.position} sur {self._controleur.nombre}"
+        )
+        self._boutonPrecedent.configure(state="normal" if self._controleur.peutReculer else "disabled")
+        self._boutonSuivant.configure(state="normal" if self._controleur.peutAvancer else "disabled")
         self._titre.configure(text=f"Ticket #{ticket.ticketID} — {ticket.title}")
 
         valeurs = {
@@ -184,19 +180,25 @@ class VueDetail(FenetreBase):
         contenu.configure(state="disabled")
         contenu.yview_moveto(haut)
 
-    def _afficherElement(self, element: ElementDescription) -> None:
+    def _afficherElement(self, element: ElementLu) -> None:
         """Texte et image s'affichent ; la vidéo est hors du cadre du Lab 3."""
         contenu = self._contenu
         if element.typeArtefact == "texte":
-            # DescriptionTexte et DescriptionTexteSaisi : le contenu est lu par la propriété.
-            lignes = cast("DescriptionTexte", element).contenu.strip().split("\n")
+            # Texte saisi ou texte importé : le serveur envoie le contenu dans les deux cas.
+            lignes = (element.contenu or "").strip().split("\n")
             for rang, ligne in enumerate(lignes):
                 derniere = rang == len(lignes) - 1
                 contenu.insert("end", f"{ligne}\n", ("texte", "finTexte") if derniere else "texte")
         elif element.typeArtefact == "image":
-            nom = os.path.basename(element.chemin)
+            nom = element.nom
             try:
-                image = tk.PhotoImage(master=self, file=element.chemin)
+                octets = self._controleur.octetsImage(element)
+            except EXCEPTIONS_PASSERELLE:
+                # Une image qui manque ne doit pas empêcher de lire le reste du ticket.
+                contenu.insert("end", f"Image indisponible : {nom}\n", "discret")
+                return
+            try:
+                image = tk.PhotoImage(master=self, data=base64.b64encode(octets))
             except tk.TclError:
                 contenu.insert("end", f"Image illisible : {nom}\n", "discret")
                 return
@@ -208,42 +210,56 @@ class VueDetail(FenetreBase):
             contenu.insert("end", "\n")
             contenu.insert("end", f"{nom} · {largeur} × {hauteur} px\n", "legende")
         else:
-            nom = os.path.basename(element.chemin)
-            contenu.insert("end", f"Vidéo non affichée : {nom}\n", "discret")
+            contenu.insert("end", f"Vidéo non affichée : {element.nom}\n", "discret")
 
     # ------------------------------------------------------------------ navigation
 
     def _aller(self, pas: int) -> None:
-        index = self._index + pas
-        if 0 <= index < len(self._tickets):
-            self._index = index
+        if self.executer(self._controleur.aller, pas):
             self._contenu.yview_moveto(0)
             self.rafraichir()
 
-    # ------------------------------------------------------------------ notifications du dépôt
+    def fermer(self) -> None:
+        self._controleur.fermer()
+        super().fermer()
 
-    def ticketModifie(self, ticket: Ticket) -> None:
+    # ------------------------------------------------------------------ notifications de la source
+
+    def ticketModifie(self, ticket: TicketLu) -> None:
         # Seul le ticket affiché demande un redessin ; les autres seront relus en y arrivant.
-        if ticket is self._ticket:
-            self.rafraichir()
+        if self._controleur.parcourt(ticket.ticketID) and self._controleur.estCourant(ticket.ticketID):
+            self._relire()
 
-    def ticketAjoute(self, ticket: Ticket) -> None:
+    def ticketAjoute(self, ticket: TicketLu) -> None:
         """Un nouveau ticket ne change pas la liste parcourue."""
 
-    def ticketRetire(self, ticket: Ticket) -> None:
-        if all(ticket is not t for t in self._tickets):
+    def ticketRetire(self, ticket: TicketLu) -> None:
+        if not self._controleur.parcourt(ticket.ticketID):
             return
-        courant = ticket is self._ticket
-        position = next(i for i, t in enumerate(self._tickets) if t is ticket)
-        del self._tickets[position]
-        if position < self._index or (position == self._index and self._index == len(self._tickets)):
-            self._index = max(self._index - 1, 0)
-        if courant:
+        etaitAffiche = self._controleur.retirer(ticket.ticketID)
+        if etaitAffiche:
             messagebox.showinfo(
                 "Ticket retiré", f"Le ticket #{ticket.ticketID} « {ticket.title} » "
                 "a été retiré du dépôt.", parent=self,
             )
-        if not self._tickets:
+        if self._controleur.estVide:
             self.fermer()
+        elif etaitAffiche:
+            self._relire()  # F6 passe au ticket qui prend sa place
         else:
-            self.rafraichir()
+            self.rafraichir()  # seul « Ticket i sur n » change
+
+    def _relire(self) -> None:
+        """Relit le détail du ticket affiché puis redessine ; l'échec est affiché, pas levé.
+
+        Un ticket supprimé juste avant la lecture est traité comme un ticket retiré : la
+        notification de la source arrivera au prochain sondage, mais F6 ne doit pas l'attendre.
+        """
+        try:
+            self._controleur.charger()
+        except RessourceIntrouvable:
+            return
+        except EXCEPTIONS_AFFICHEES as erreur:
+            messagebox.showerror(titreErreur(erreur), str(erreur), parent=self)
+            return
+        self.rafraichir()
