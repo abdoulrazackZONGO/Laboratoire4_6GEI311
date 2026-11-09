@@ -1,20 +1,143 @@
-# Laboratoire 3 : interface graphique du système de gestion de tickets
+# Laboratoire 4 : système de gestion de tickets en client-serveur, par une API REST
 
 Cours **6GEI311 Architecture des logiciels**
 
 **Équipe :** Zongo T Julien, Zongo A Razack
 
+Le Lab 4 coupe l'application du Lab 3 en deux processus. Un serveur Flask (`serveur.py`) détient le modèle et l'expose par une API REST, décrite dans [`openapi.yaml`](openapi.yaml). La GUI Tkinter (`app.py`) n'appelle plus le modèle : elle passe par cette API, comme la page web servie par le même serveur (bonus). Le rapport du laboratoire est [`Lab4_6GEI311_Rapport.pdf`](Lab4_6GEI311_Rapport.pdf), avec sa source Word dans `documents/`.
+
+Les sections [Lab 4](#lab-4--client-serveur) ci-dessous expliquent comment lancer le serveur et les clients. Les sections suivantes viennent des labs 2 et 3 : elles décrivent les fenêtres et le modèle, qui n'ont pas changé dans leur usage.
+
+## Lab 4 : client-serveur
+
+### Installation
+
+**Prérequis :** Python 3.10 ou plus récent et Git. Le serveur a besoin de Flask ; la GUI n'utilise que la bibliothèque standard.
+
+```bash
+git clone https://github.com/abdoulrazackZONGO/Laboratoire4_6GEI311.git
+```
+
+```bash
+cd Laboratoire4_6GEI311
+```
+
+```bash
+python -m venv .venv
+```
+
+Activer l'environnement (PowerShell : `.venv\Scripts\Activate.ps1`), puis :
+
+```bash
+pip install -r requirements.txt
+```
+
+### Lancer le serveur et les clients
+
+Dans un premier terminal, le serveur (http://127.0.0.1:5000) :
+
+```bash
+python serveur.py
+```
+
+Dans un deuxième terminal, la GUI, autant de fois que de fenêtres voulues (option `--url` pour un autre serveur) :
+
+```bash
+python app.py
+```
+
+La page web s'ouvre dans un navigateur à l'adresse http://127.0.0.1:5000/. Juste avant une démonstration, `python outils/essai_api.py` enchaîne quelques requêtes réelles contre le serveur lancé et affiche chaque code reçu à côté du code attendu.
+
+- **Au démarrage**, le serveur charge `donnees/sauvegarde.json` s'il existe, sinon la démonstration `donnees/demo.json`. Il sauvegarde après chaque modification réussie.
+- **Pour repartir de la démonstration**, arrêter le serveur, supprimer `donnees/sauvegarde.json`, puis relancer le serveur.
+- Les brouillons (créations et éditions en cours) ne sont pas sauvegardés : un redémarrage du serveur les perd.
+
+### Architecture
+
+| Couche | Paquets | Rôle |
+|---|---|---|
+| Modèle métier | `modele`, `etats`, `acteurs`, `description`, `commandes`, `sessions` | Toutes les règles ; inchangé sauf quatre ajouts (rapport, section I.3). |
+| Persistance | `persistance` | `DepotJSON`, `StockageImages`. |
+| Contrôleur (serveur) | `api/` | Routes Flask : identifient l'acteur (`X-Acteur-Id`), vérifient la requête, appellent une méthode métier, sauvegardent, répondent en JSON. |
+| Passerelle (client) | `ihm/passerelle` | `ClientAPI`, objets de lecture et `SourceTickets`, qui sonde `GET /version` chaque seconde. |
+| Présentation | `ihm/controleurs`, `ihm/vues`, `web/` | Fenêtres F1 à F8 de la GUI, et page web. |
+
+Le contrat de l'API ([`openapi.yaml`](openapi.yaml)) décrit les 21 opérations. Un test vérifie que chaque chemin du contrat existe dans le serveur, et inversement ; un autre vérifie les règles de dépendances entre les couches.
+
+### La page web (bonus)
+
+Le serveur sert une page à l'adresse http://127.0.0.1:5000/ (`web/index.html`, `app.js`, `style.css`), sans framework. Elle ne passe que par l'API, comme la GUI, et reprend ses deux vues : celle de l'Admin (F2) et celle du User (F3). Les captures ci-dessous sont celles de la page réelle, sur les données de démonstration ; elles sont dans `documents/captures_lab4/`.
+
+| Élément | Comportement |
+|---|---|
+| Connexion | Une liste des acteurs (`GET /acteurs`). Le compte choisi est mémorisé par le navigateur, puis envoyé dans `X-Acteur-Id` à chaque requête. |
+| Vue Admin | « Tous les tickets », filtrables par statut. Dans le détail, « Changer le statut » : assigner à un User, désassigner, valider, fermer (`PATCH`). |
+| Vue User | « Mes tickets », en deux onglets : « Créés par moi » (`?createur=`) et « Assignés à moi » (`?assigne=`). Dans le détail : soumettre à validation (`PATCH`) et supprimer (`DELETE`). « Nouveau ticket » crée un ticket (`POST /tickets`). |
+| Boutons | Actifs seulement si l'action est possible : statut dans `transitionsPermises`, ticket assigné à moi, ticket créé par moi et jamais assigné. Une ligne explique chaque bouton grisé. |
+| Refus | Le type et le message renvoyés par l'API s'affichent dans la page, près de l'action. |
+| Suivi | La page interroge `GET /version` chaque seconde : un changement fait dans la GUI apparaît en une ou deux secondes. Un bandeau prévient si le serveur ne répond plus. |
+
+**Connexion.** Avant tout choix, la page invite à choisir un compte en haut à droite.
+
+![Page web : choix du compte](documents/captures_lab4/web_1_connexion.jpg)
+
+**Vue Admin.** Tous les tickets, filtrables par statut, et le détail du ticket choisi, avec son image servie par l'API. Seuls les changements de statut permis depuis « Assigné » sont actifs : « Valider » est grisé.
+
+![Page web : vue Admin, détail du ticket 2](documents/captures_lab4/web_2_admin.jpg)
+
+**Vue User, « Créés par moi ».** T Julien voit les trois tickets qu'il a créés. Le ticket 6 n'a jamais été assigné : « Supprimer… » est actif. « Soumettre à validation » est grisé, et la ligne du dessous dit pourquoi.
+
+![Page web : vue User, onglet Créés par moi](documents/captures_lab4/web_3_user_crees.jpg)
+
+**Vue User, « Assignés à moi ».** La dernière colonne montre le créateur. Le ticket 10 est assigné à T Julien : il peut le soumettre à validation, mais pas le supprimer.
+
+![Page web : vue User, onglet Assignés à moi](documents/captures_lab4/web_4_user_assignes.jpg)
+
+**Création d'un ticket.** Le formulaire s'ouvre au-dessus de la liste. Un titre vide est refusé par le serveur, et son message s'affiche dans le formulaire.
+
+![Page web : formulaire de création avec un refus du serveur](documents/captures_lab4/web_5_user_creation.jpg)
+
+### Scénario de démonstration (5 minutes)
+
+Préparer : supprimer `donnees/sauvegarde.json`, lancer le serveur, puis deux GUI connectées l'une en Ambroise Fleury (Admin, F2), l'autre en T Julien (User, F3).
+
+1. F3 : « Nouveau ticket », titre « Paiement refusé », priorité HAUTE, « Continuer ».
+2. F5 : taper le texte, ajouter l'image `ressources/capture_ecran.png` et un commentaire (« Ajouter »).
+3. F5 : « Mettre en pause » ; dans F3, onglet « Brouillons », « Reprendre l'édition » : le texte tapé est là.
+4. F5 : « Créer le ticket ». Le ticket #11 apparaît dans F2 en une ou deux secondes.
+5. F2 : « Voir le détail » de #11 : texte, image et commentaire.
+6. F2 : #11, « Assigner… » à T Julien. Il apparaît dans « Assignés à moi » de F3.
+7. F3 : « Soumettre à validation ». F2 affiche VALIDATION.
+8. F2 : #6 et #3 (Ctrl+clic), « Assigner… » à Mike Tonny : rapport avec un succès et un refus (#3 est FERME).
+9. PowerShell, sans GUI : valider #11.
+
+```powershell
+Invoke-RestMethod -Method Patch -Uri http://127.0.0.1:5000/ticket/11 -Headers @{"X-Acteur-Id"="1"} -ContentType "application/json" -Body '{"statut":"TERMINE"}'
+```
+
+10. PowerShell : tenter de le fermer, ce qui est refusé (409, transition invalide depuis TERMINE).
+
+```powershell
+try { Invoke-RestMethod -Method Patch -Uri http://127.0.0.1:5000/ticket/11 -Headers @{"X-Acteur-Id"="1"} -ContentType "application/json" -Body '{"statut":"FERME"}' } catch { $_.ErrorDetails.Message }
+```
+
+11. Page web http://127.0.0.1:5000/ : un ticket créé en User apparaît dans la GUI en une ou deux secondes, et l'inverse.
+
+---
+
+# Labs 2 et 3
+
 Le Lab 3 donne une interface graphique au système de tickets du Lab 2. Depuis une même connexion, un Admin et plusieurs utilisateurs ouvrent chacun leur fenêtre. Les utilisateurs créent et décrivent leurs tickets, l'Admin les fait avancer dans leur cycle de vie, et chaque liste ouverte se met à jour dès qu'un autre acteur change quelque chose.
 
 La vidéo de démonstration (scénarios de test de l'application) est jointe à la release [Lab 3 : remise en vidéo demo](https://github.com/zongo-julien/Laboratoire3_6GEI311_Architecture_des_logiciels/releases/download/lab3-remise/Lab3_demo_scenarios.mp4).
 
-L'interface est écrite avec tkinter, sans dépendance externe, selon une architecture MVC posée sur le modèle du Lab 2. Ce modèle garde ses patrons (State, Template Method, Factory Method, Command) et en gagne un, l'Observateur. Le rapport du laboratoire, avec les maquettes Figma et les captures de toutes les fenêtres, est à la racine du dépôt, [`Lab3_6GEI311_Rapport.pdf`](Lab3_6GEI311_Rapport.pdf), avec une copie et sa source Word dans `documents/`.
+L'interface est écrite avec tkinter, sans dépendance externe, selon une architecture MVC posée sur le modèle du Lab 2. Ce modèle garde ses patrons (State, Template Method, Factory Method, Command) et en gagne un, l'Observateur. Les maquettes Figma et les captures de toutes les fenêtres sont dans `documents/`.
 
 La Partie 1 du Lab 2 (implémentation littérale du diagramme de classes initial) est dans un dépôt séparé : [Laboratoire2_6GEI311_Architecture_des_logiciels_Partie1](https://github.com/zongo-julien/zongo-julien-Laboratoire2_6GEI311_Architecture_des_logiciels_Partie1).
 
 ## Sommaire
 
-1. [Installation](#installation)
+1. [Lab 4 : client-serveur](#lab-4--client-serveur), dont [la page web](#la-page-web-bonus)
 2. [Lancer l'interface](#lancer-linterface)
 3. [Les fenêtres](#les-fenêtres)
    - [Connexion (F1)](#connexion-f1)
@@ -22,6 +145,9 @@ La Partie 1 du Lab 2 (implémentation littérale du diagramme de classes initial
    - [Mes tickets et détail d'un ticket (F3, F6)](#mes-tickets-et-détail-dun-ticket-f3-f6)
    - [Créer et éditer un ticket (F4, F5)](#créer-et-éditer-un-ticket-f4-f5)
 4. [Architecture de l'interface](#architecture-de-linterface)
+   - [Passerelle et objets de lecture](#passerelle-et-objets-de-lecture)
+   - [Du patron Observateur au sondage de /version](#du-patron-observateur-au-sondage-de-version)
+   - [Règles de dépendances](#règles-de-dépendances)
    - [Diagramme de classes du Lab 3](#diagramme-de-classes-du-lab-3)
 5. [Lancer les tests](#lancer-les-tests)
 6. [Le modèle](#le-modèle)
@@ -29,67 +155,48 @@ La Partie 1 du Lab 2 (implémentation littérale du diagramme de classes initial
 8. [Ce que nous avons appris](#ce-que-nous-avons-appris)
 9. [Structure du code](#structure-du-code)
 
-## Installation
-
-**Prérequis :** Python 3.10 ou plus récent et Git. Aucune dépendance externe n'est nécessaire : le projet n'utilise que la bibliothèque standard, tkinter compris.
-
-Cloner le dépôt :
-
-```bash
-git clone https://github.com/zongo-julien/Laboratoire3_6GEI311_Architecture_des_logiciels.git
-```
-
-Se placer à la racine du dépôt :
-
-```bash
-cd Laboratoire3_6GEI311_Architecture_des_logiciels
-```
-
 ## Lancer l'interface
+
+Au Lab 4, l'interface est un **client** de l'API REST : elle ne détient plus les données, elle les demande au serveur. Le serveur doit donc être lancé en premier (`python serveur.py`). Chaque interface se lance ensuite dans son propre terminal, depuis la racine du dépôt :
 
 ```bash
 python app.py
 ```
 
-L'interface graphique utilise tkinter, inclus dans la bibliothèque standard (sous Linux, installer le paquet `python3-tk` s'il manque). Elle peut être lancée depuis n'importe quel dossier : `app.py` se place lui-même à la racine du dépôt.
+L'interface n'utilise que la bibliothèque standard : tkinter pour les fenêtres et `urllib` pour les requêtes HTTP. Flask ne sert qu'au serveur. Sous Linux, installer le paquet `python3-tk` s'il manque.
 
-- **Au démarrage**, l'application charge `donnees/sauvegarde.json` s'il existe, sinon les données de démonstration `donnees/demo.json`. Une sauvegarde illisible est signalée, puis l'application démarre sur la démonstration.
-- **À la fermeture** de la fenêtre de connexion, tout le système est sauvegardé dans `donnees/sauvegarde.json`, que Git ignore. Les sessions d'édition ou de création encore ouvertes ne sont pas sauvegardées : une confirmation le rappelle avant de quitter.
-- Pour **repartir de la démonstration**, supprimer `donnees/sauvegarde.json`.
-- Pour **régénérer la démonstration** (`donnees/demo.json` et ses images `donnees/images/demo_*.png`) avec l'API du modèle :
-
-```bash
-python outils/generer_demo.py
-```
+- **Adresse du serveur.** Par défaut `http://127.0.0.1:5000`. Pour un serveur sur un autre port : `python app.py --url http://127.0.0.1:5001`.
+- **Plusieurs interfaces.** On peut en lancer autant que l'on veut, par exemple un Admin dans l'une et un utilisateur dans l'autre : ce que l'une change apparaît dans l'autre en une seconde environ.
+- **Sans serveur**, l'interface affiche « Serveur injoignable » et propose de réessayer.
+- **Serveur arrêté en cours de route** : une seule boîte d'erreur s'affiche, puis les listes se remettent à jour d'elles-mêmes dès que le serveur répond de nouveau.
+- **Aucun fichier de données côté client.** L'interface ne lit ni n'écrit aucun fichier de `donnees/`. La fermer ne demande donc aucune confirmation et ne perd rien : chaque action a déjà été enregistrée par le serveur, et une création ou une édition commencée dans F5 reste en pause sur le serveur.
 
 ## Les fenêtres
 
-L'interface compte huit fenêtres, numérotées comme dans les maquettes Figma de `documents/maquettes/`. Les captures ci-dessous sont celles des fenêtres réelles, sur les données de démonstration ; toutes sont dans `documents/captures_lab3/`.
+L'interface compte huit fenêtres, numérotées comme dans les maquettes Figma de `documents/maquettes/`. Leur apparence n'a pas changé au Lab 4 : les captures ci-dessous, prises au Lab 3 sur les données de démonstration, restent valables ; toutes sont dans `documents/captures_lab3/`. Ce qui change, c'est d'où viennent les données (des requêtes `GET`) et où vont les actions (des requêtes `POST`, `PATCH` ou `DELETE`).
 
-| Fenêtre | Rôle | Vue | Contrôleur |
+| Fenêtre | Rôle | Vue | Logique de présentation |
 |---|---|---|---|
 | F1 Connexion | Choisir l'acteur avec lequel ouvrir une session | `vue_connexion.py` | `ControleurPrincipal` |
 | F2 Liste Admin | Tout le dépôt, filtre par statut, actions en lot | `vue_liste_admin.py` | `ControleurAdmin` |
 | F3 Mes tickets | Tickets créés, tickets assignés et brouillons | `vue_liste_user.py` | `ControleurUser` |
 | F4 Nouveau ticket | Titre et priorité d'un nouveau ticket | `vue_nouveau_ticket.py` | `ControleurPrincipal` |
 | F5 Éditeur de description | Texte, images et commentaires, en création ou en édition | `vue_edition.py` | `ControleurEdition` |
-| F6 Détail d'un ticket | Lecture d'un ticket, commune aux deux rôles | `vue_detail.py` | aucun (lecture seule) |
+| F6 Détail d'un ticket | Lecture d'un ticket, commune aux deux rôles | `vue_detail.py` | `ControleurDetail` |
 | F7 Confirmation du lot | Opérations de l'Admin avant application | `vue_lot.py` | `ControleurAdmin` |
-| F8 Rapport d'exécution | Succès et refus après application | `vue_rapport.py` | aucun (lecture seule) |
+| F8 Rapport d'exécution | Succès et refus après application | `vue_rapport.py` | aucune (lecture seule) |
 
 ### Connexion (F1)
 
-La connexion liste les acteurs de l'annuaire, nom à gauche et rôle à droite. « Ouvrir la session », un double-clic ou Entrée ouvre F2 pour l'Admin et F3 pour un utilisateur. La connexion reste ouverte : on peut ainsi mettre plusieurs acteurs côte à côte et voir le patron Observateur à l'œuvre. Il n'y a pas de mot de passe, l'authentification sortant du cadre du laboratoire.
+La connexion liste les acteurs lus sur le serveur (`GET /acteurs`), nom à gauche et rôle à droite. « Ouvrir la session », un double-clic ou Entrée ouvre F2 pour l'Admin et F3 pour un utilisateur. Chaque session envoie ensuite l'identifiant de son acteur dans l'en-tête `X-Acteur-Id` de chacune de ses requêtes : c'est ainsi que le serveur sait qui agit. La connexion reste ouverte : on peut mettre plusieurs acteurs côte à côte, dans la même interface ou dans plusieurs. Il n'y a pas de mot de passe, l'authentification sortant du cadre du laboratoire.
 
-Fermer la connexion quitte l'application. S'il reste des sessions d'édition ou de création ouvertes, une confirmation l'annonce, « Non » par défaut, puisque ces sessions ne sont pas sauvegardées.
+Fermer la connexion quitte l'application, sans confirmation : chaque action a déjà été enregistrée par le serveur, et les brouillons y restent.
 
 ![F1 Connexion](documents/captures_lab3/F1_connexion.png)
 
-![Confirmation en quittant avec une session ouverte](documents/captures_lab3/F1_quitter.png)
-
 ### Gérer les tickets en Admin (F2, F7, F8)
 
-**Parcours.** Une session Admin ouvre F2 : tous les tickets du dépôt (numéro, titre, priorité, statut, créateur, assigné), filtrables par statut. On sélectionne un ou plusieurs tickets (Ctrl+clic), puis « Assigner… », « Désassigner », « Valider » ou « Fermer » ouvre F7, qui montre exactement les opérations du lot avant toute modification ; pour « Assigner… », on y choisit d'abord l'utilisateur. « Appliquer » exécute le lot « au mieux » : un refus ne bloque pas les opérations suivantes, et F8 affiche les succès et les refus avec leur motif. « Voir le détail », ou un double-clic, ouvre F6 sur la sélection.
+**Parcours.** Une session Admin ouvre F2 : tous les tickets du dépôt (numéro, titre, priorité, statut, créateur, assigné), filtrables par statut. On sélectionne un ou plusieurs tickets (Ctrl+clic), puis « Assigner… », « Désassigner », « Valider » ou « Fermer » ouvre F7, qui montre exactement les opérations du lot avant toute modification ; pour « Assigner… », on y choisit d'abord l'utilisateur. « Appliquer » envoie le lot en une seule requête (`POST /acteur/{acteurId}/lots`). Le serveur l'exécute « au mieux » : un refus ne bloque pas les opérations suivantes, et F8 affiche le rapport qu'il renvoie, succès et refus avec leur motif. « Voir le détail », ou un double-clic, ouvre F6 sur la sélection.
 
 ![F2 Liste Admin : deux tickets OUVERT sélectionnés](documents/captures_lab3/F2_liste_admin.png)
 
@@ -97,75 +204,120 @@ Fermer la connexion quitte l'application. S'il reste des sessions d'édition ou 
 
 ![F8 après un lot : deux succès et un refus motivé](documents/captures_lab3/F8_rapport_lot.png)
 
-F2 est abonnée au dépôt (patron Observer) : un ticket créé ou modifié par un autre acteur y apparaît aussitôt, sans action de l'Admin, et la sélection est conservée. `ControleurAdmin` ne modifie jamais un ticket directement : il passe par `Admin.ouvrirLot()` et `LotAdmin`. Il n'importe pas tkinter et est testé dans le CI (`tests/test_controleur_admin.py`).
+F2 observe la `SourceTickets` de la session (voir [Du patron Observateur au sondage de /version](#du-patron-observateur-au-sondage-de-version)) : un ticket créé ou modifié par un autre acteur, même depuis une autre interface, y apparaît en une seconde environ, sans action de l'Admin, et la sélection est conservée. `ControleurAdmin` ne modifie jamais un ticket : il prépare l'aperçu du lot sur le client, sans rien envoyer, puis l'envoie au serveur à l'application. Il n'importe pas tkinter et est testé dans le CI contre les vraies routes du serveur (`tests/test_controleur_admin.py`).
 
 **Tactiques d'utilisabilité.**
 
 | Tactique | Dans l'interface |
 |---|---|
-| Agrégat | Une action s'applique en un seul lot à tous les tickets sélectionnés ; F6 parcourt toute la sélection. |
-| Modèle du système | Un bouton d'action n'est actif que si au moins un ticket sélectionné permet la transition (`transitionPossible()`) : les règles restent dans les états. |
+| Agrégat | Une action s'applique en un seul lot, et une seule requête, à tous les tickets sélectionnés ; F6 parcourt toute la sélection. |
+| Modèle du système | Un bouton d'action n'est actif que si au moins un ticket sélectionné permet la transition, d'après la liste `transitionsPermises` que le serveur envoie avec chaque ticket : les règles restent dans les états, sur le serveur. |
 | Prévention des erreurs | Pour « Fermer », action définitive, F7 affiche un avertissement et met le focus sur « Annuler » : la touche Entrée ne ferme aucun ticket. Pour « Assigner… », aucun utilisateur n'est choisi d'avance et « Appliquer » reste grisé tant qu'il ne l'est pas. |
-| Annuler | « Annuler », ou Échap, ferme F7 sans rien appliquer : le lot préparé est simplement oublié. |
+| Annuler | « Annuler », ou Échap, ferme F7 sans rien envoyer au serveur : le lot préparé est simplement oublié. |
 | Retour d'information | F7 liste les opérations en attente ; F8 donne le bilan, puis chaque succès et chaque refus avec son motif. |
 
 ### Mes tickets et détail d'un ticket (F3, F6)
 
-**Parcours.** Une session User ouvre F3, qui ne montre que les tickets qui concernent l'utilisateur, en trois onglets : « Créés par moi », « Assignés à moi » et « Brouillons » (créations mises en pause, dont le ticket n'est pas encore dans le dépôt). La colonne « Édition » indique une session « en pause » ou « en cours ». Depuis F3 : « Nouveau ticket » ouvre F4 ; « Éditer », ou « Reprendre l'édition » pour une session en pause, ouvre F5 ; « Supprimer » retire un ticket jamais assigné, après confirmation ; « Soumettre à validation » fait passer un ticket assigné à l'état VALIDATION. « Voir le détail », ou un double-clic, ouvre F6.
+**Parcours.** Une session User ouvre F3, qui ne montre que les tickets qui concernent l'utilisateur, en trois onglets : « Créés par moi », « Assignés à moi » et « Brouillons ». Les listes viennent de `GET /tickets?createur=` et `GET /tickets?assigne=`. L'onglet « Brouillons » ne liste que les créations commencées et pas encore appliquées, dont le ticket n'est pas encore dans le dépôt. Une édition d'un ticket existant s'affiche plutôt dans la colonne « Édition » de sa ligne, « en pause » ou « en cours ». Depuis F3 : « Nouveau ticket » ouvre F4 ; « Éditer », ou « Reprendre l'édition » pour une session en pause, ouvre F5 ; « Supprimer » retire un ticket jamais assigné, après confirmation (`DELETE /ticket/{ticketId}`) ; « Soumettre à validation » fait passer un ticket assigné à l'état VALIDATION (`PATCH /ticket/{ticketId}`). « Voir le détail », ou un double-clic, ouvre F6.
 
-F6 est commune aux deux rôles et ne fait que lire le ticket : statut, priorité, créateur, assigné, dates, puis la description (le texte, et les images PNG ou GIF, réduites au-delà de 400 px de large) et les commentaires. « ‹ Précédent » et « Suivant › » parcourent la sélection reçue de F2, ou l'onglet de F3, sans revenir à la liste.
+F6 est commune aux deux rôles et ne fait que lire le ticket (`GET /ticket/{ticketId}`) : statut, priorité, créateur, assigné, dates, puis la description et les commentaires. Les images ne sont plus lues sur le disque : F6 les télécharge par l'API (`GET /ticket/{ticketId}/image/{nomImage}`), les garde le temps de la fenêtre et les affiche avec `tk.PhotoImage(data=...)`, réduites au-delà de 400 px de large. Une image indisponible est signalée sans empêcher la lecture du reste. « ‹ Précédent » et « Suivant › » parcourent la sélection reçue de F2, ou l'onglet de F3, sans revenir à la liste.
 
 ![F3, onglet « Brouillons » : une création en pause](documents/captures_lab3/F3_brouillons.png)
 
 ![F6 : informations, texte et image de la description](documents/captures_lab3/F6_detail.png)
 
-F3 et F6 sont abonnées au dépôt (patron Observer) : un changement fait par un autre acteur s'affiche aussitôt ; si le ticket affiché dans F6 est retiré, un message l'annonce et F6 passe au suivant, ou se ferme. Les sessions, elles, ne sont pas observables : F3 relit l'état des sessions de l'utilisateur toutes les 500 ms, pour qu'un brouillon mis en pause depuis F5 apparaisse aussitôt. `ControleurUser` passe par `User` (`supprimerTicket()`, `soumettreValidation()`) ; il n'importe pas tkinter et est testé dans le CI (`tests/test_controleur_user.py`).
+F3 et F6 observent la `SourceTickets` de la session : un changement fait par un autre acteur s'affiche en une seconde environ. F6 suit le ticket affiché par son **identifiant**, et non plus avec `is` : chaque rafraîchissement crée de nouveaux objets, si bien que l'ancienne comparaison échouait toujours. Seul le ticket affiché est relu en détail, ce qui fait apparaître aussi un nouveau commentaire ou un ajout à la description ; si ce ticket est supprimé, un message l'annonce et F6 passe au suivant, ou se ferme.
+
+Les brouillons, eux, ne changent pas le compteur de version du serveur. F3 les relit (`GET /acteur/{acteurId}/brouillons`) à chaque rafraîchissement, et dès qu'un éditeur F5 ouvre, met en pause, reprend, abandonne ou applique un brouillon : la relecture toutes les 500 ms du Lab 3 a disparu. `ControleurUser` et `ControleurDetail` n'importent pas tkinter et sont testés dans le CI (`tests/test_controleur_user.py`, `test_controleur_detail.py`).
 
 **Tactiques d'utilisabilité.**
 
 | Tactique | Dans l'interface |
 |---|---|
-| Pause et reprise | Un brouillon apparaît dans l'onglet « Brouillons » ; « Reprendre l'édition » rouvre F5 avec le texte tapé. Le bouton s'appelle « Reprendre l'édition » dès qu'une session est en pause sur le ticket choisi. |
+| Pause et reprise | Une création en pause apparaît dans l'onglet « Brouillons », une édition en pause dans la colonne « Édition » ; « Reprendre l'édition » rouvre F5 avec le texte tapé et les ajouts en attente, gardés par le serveur. Le bouton s'appelle « Reprendre l'édition » dès qu'un brouillon est en pause sur le ticket choisi. |
 | Prévention des erreurs | « Supprimer » n'est actif que pour un ticket créé par l'utilisateur et jamais assigné ; « Soumettre à validation » seulement pour un ticket qui lui est assigné et dont l'état le permet ; « Éditer » seulement pour un ticket qu'il a créé. La suppression demande une confirmation, « Non » par défaut. |
 | Agrégat | F6 parcourt plusieurs tickets avec « ‹ Précédent » et « Suivant › » (ou Alt+← et Alt+→), sans revenir à la liste. |
 | Retour d'information | Le nombre de lignes de chaque onglet est affiché dans son titre ; F6 indique « Ticket n sur N ». |
 
 ### Créer et éditer un ticket (F4, F5)
 
-**Parcours.** Depuis la liste d'un utilisateur (F3), « Nouveau ticket » ouvre F4 : on y saisit le titre et la priorité, puis « Continuer » crée le ticket et sa `SessionCreation`, sans toucher au dépôt, et ouvre l'éditeur F5. Dans F5, on tape le texte de la description, on ajoute des images PNG ou GIF et des commentaires, qui restent en attente dans la session. « Créer le ticket » ajoute le texte tapé à la description, applique la session et affiche le rapport (F8) : c'est seulement à ce moment que le ticket entre dans le dépôt et apparaît chez les autres acteurs. Pour un ticket existant, « Éditer » dans F3 ouvre la même fenêtre F5 en mode édition, avec le bouton « Appliquer ».
+**Parcours.** Depuis la liste d'un utilisateur (F3), « Nouveau ticket » ouvre F4 : on y saisit le titre et la priorité, puis « Continuer » ouvre un **brouillon** de création sur le serveur (`POST /acteur/{acteurId}/brouillons`) et l'éditeur F5. Le serveur réserve alors le numéro du ticket, sans l'ajouter au dépôt. Dans F5, on tape le texte de la description, on ajoute des images PNG ou GIF et des commentaires (`POST .../modifications`), qui restent en attente dans le brouillon. Chaque image est lue sur le poste et envoyée en base64 : le serveur en garde une copie. « Créer le ticket » envoie le texte tapé avec la demande d'application (`POST .../application`) ; le serveur l'ajoute à la description, applique le brouillon et renvoie le rapport, affiché par F8. C'est seulement à ce moment que le ticket entre dans le dépôt et apparaît chez les autres acteurs.
+
+Pour un ticket existant, « Éditer » dans F3 ouvre la même fenêtre F5 en mode édition, avec le bouton « Appliquer ». Éditer un ticket, c'est **compléter** sa description et ses commentaires : le modèle ne permet ni de modifier ni de retirer un élément existant, et le titre et la priorité ne changent plus après la création. F5 ne montre donc que ce que l'on ajoute ; le contenu existant se lit dans F6.
 
 ![F4 Nouveau ticket](documents/captures_lab3/F4_nouveau_ticket.png)
 
 ![F5 en création : deux images, un commentaire et le texte tapé](documents/captures_lab3/F5_creation.png)
 
-Chaque session a un seul `ControleurEdition`, qui survit à la fermeture de F5. Il garde le texte tapé pendant une pause et la pile des copies d'images (`StockageImages` copie chaque image dans `donnees/images/`).
+Le brouillon vit sur le serveur : c'est lui qui garde, pendant une pause, le texte tapé (`PATCH` avec `enPause` et `texteBrouillon`) et les copies d'images. Côté client, `ControleurPrincipal` tient un seul `ControleurEdition` par brouillon : « Éditer » sur un ticket dont F5 est déjà ouverte la ramène au premier plan au lieu d'en ouvrir une seconde.
 
 **Tactiques d'utilisabilité.**
 
 | Tactique | Dans l'interface |
 |---|---|
-| Annuler une saisie | « Annuler » dans F4 ne crée rien. « Abandonner » dans F5 renonce à toute la session, après confirmation si du texte ou des modifications seraient perdus ; les copies d'images sont supprimées et le ticket reste inchangé (ou n'est pas créé). |
+| Annuler une saisie | « Annuler » dans F4 ne crée rien. « Abandonner » dans F5 renonce à tout le brouillon (`DELETE`), après confirmation si du texte ou des modifications seraient perdus ; le serveur supprime ses copies d'images, et le ticket reste inchangé (ou n'est pas créé). |
 | Undo de frappe | Dans la zone de texte, Ctrl+Z et Ctrl+Y annulent ou rétablissent la frappe. |
-| Undo de session | « Annuler le dernier ajout » retire la dernière modification en attente (image ou commentaire) ; la copie d'une image retirée est supprimée de `donnees/images/`. |
-| Pause et reprise | « Mettre en pause », ou la fermeture de F5, met la session en pause sans rien perdre. Le brouillon reste dans F3, et le reprendre rouvre F5 avec le texte tapé. |
+| Undo de brouillon | « Annuler le dernier ajout » retire la dernière modification en attente, image ou commentaire (`DELETE .../modification/derniere`) ; le serveur supprime la copie d'une image retirée. |
+| Pause et reprise | « Mettre en pause », ou la fermeture de F5, met le brouillon en pause sans rien perdre, même si l'interface est fermée ensuite. Le reprendre rouvre F5 avec le texte tapé. |
 | Agrégat | Plusieurs images s'ajoutent en une seule sélection ; les images refusées sont signalées ensemble dans une seule boîte, et les autres sont ajoutées. |
 | Prévention des erreurs | Les boutons sans effet possible sont grisés : « Continuer » sans titre, « Créer le ticket » sans texte ni image, « Appliquer » sans texte ni modification, « Ajouter » sans commentaire, « Annuler le dernier ajout » sans modification en attente. |
-| Retour d'information | F5 affiche le nombre et la liste des modifications en attente ; F8 présente le rapport d'exécution après l'application. |
+| Retour d'information | F5 affiche le nombre et la liste des modifications en attente ; F8 présente le rapport d'exécution renvoyé par le serveur. |
 
 ## Architecture de l'interface
 
-| Couche | Paquets | Règle |
+```
+Vues (ihm/vues)                              fenêtres F1 à F8, tkinter
+      │
+Logique de présentation (ihm/controleurs)    ce que chaque fenêtre lit et envoie
+      │
+Passerelle (ihm/passerelle)                  seul endroit qui parle HTTP
+      │
+═════════ HTTP + JSON, en-tête X-Acteur-Id ═════════
+      │
+Serveur Flask (api/), puis modèle et persistance
+```
+
+Dans le vocabulaire MVC du Lab 4, le **contrôleur** est l'ensemble des routes de l'API, côté serveur. Les classes de `ihm/controleurs/` gardent leur nom (`ControleurAdmin`, `ControleurUser`…), mais jouent le rôle de **logique de présentation** de l'interface : elles décident de ce qu'une fenêtre affiche et de la requête à envoyer, jamais de ce qui est permis. C'est le serveur qui décide, avec les états et les acteurs du modèle.
+
+| Couche | Paquet | Règle |
 |---|---|---|
-| Modèle | `acteurs`, `modele`, `etats`, `description`, `sessions`, `commandes`, `persistance` | Porte les règles métier ; ne connaît pas tkinter. |
-| Vues | `ihm/vues` | Lisent le modèle par ses propriétés en lecture seule et l'observent ; ne le modifient jamais. |
-| Contrôleurs | `ihm/controleurs` | Font toutes les modifications, en passant par `Admin`, `User`, les sessions ou `LotAdmin` ; jamais par `ticket.updateStatus()`, `setEtat()` ni un attribut privé. |
+| Vues | `ihm/vues` | Lisent les objets de lecture par leurs propriétés et observent la `SourceTickets` ; ne parlent jamais au serveur directement. |
+| Logique de présentation | `ihm/controleurs` | Transforme chaque action en requête par la passerelle ; ne modifie jamais un objet lu ; sans tkinter, sauf `ControleurPrincipal`. |
+| Passerelle | `ihm/passerelle` | Seule à faire des requêtes HTTP ; transforme le JSON reçu en objets de lecture et les erreurs reçues en exceptions. |
 
-- Seul `ControleurPrincipal` crée des fenêtres. Il charge et sauvegarde les données, et tient un registre des sessions d'édition : un seul `ControleurEdition` par session, qui survit à la fermeture de F5 et garde le texte tapé pendant une pause.
-- `ControleurAdmin`, `ControleurUser` et `ControleurEdition` n'importent ni tkinter ni les vues. Ils sont donc testés dans le CI, qui n'a pas d'écran, avec un faux contrôleur principal.
-- Chaque fenêtre hérite de `FenetreBase`, qui l'abonne à ses sujets à l'ouverture et l'en désabonne à la fermeture, avant de la détruire. F2, F3 et F6 observent le dépôt, qui relaie les modifications de chacun de ses tickets.
-- `FenetreBase.executer()` affiche les cinq exceptions métier de `modele/exceptions.py` dans une boîte, et la fenêtre reste ouverte. Toute autre exception est un bug et remonte dans la console. En pratique, les boutons qui mèneraient à un refus sont grisés d'avance.
+- Seul `ControleurPrincipal` crée des fenêtres. Pour chaque session ouverte depuis F1, il tient sa `ClientAPI` et sa `SourceTickets`, ainsi qu'un registre des éditeurs ouverts : un seul `ControleurEdition` par brouillon.
+- `ControleurAdmin`, `ControleurUser`, `ControleurEdition` et `ControleurDetail` n'importent ni tkinter ni les vues. Ils sont donc testés dans le CI, qui n'a pas d'écran, contre les vraies routes du serveur.
+- Chaque fenêtre hérite de `FenetreBase`, qui l'abonne à ses sujets à l'ouverture et l'en désabonne à la fermeture, avant de la détruire.
+- `FenetreBase.executer()` affiche dans une boîte les cinq exceptions métier de `modele/exceptions.py`, ainsi que les erreurs propres au client, comme `ServeurInjoignable`, et la fenêtre reste ouverte. Toute autre exception est un bug et remonte dans la console. En pratique, les boutons qui mèneraient à un refus sont grisés d'avance.
 
-Les constructeurs des vues et les signatures des contrôleurs ont été figés dès la première étape du sprint, avec une ébauche de chaque fenêtre ; ce contrat est détaillé dans le rapport (section 3.2).
+Au Lab 3, les constructeurs des vues et les signatures des contrôleurs avaient été figés dès la première étape du sprint, avec une ébauche de chaque fenêtre ; ce contrat est détaillé dans le rapport du Lab 3 (section 3.2). Au Lab 4, ce rôle de contrat est tenu par `openapi.yaml`, qui décrit l'API entre le client et le serveur.
+
+### Passerelle et objets de lecture
+
+- `ClientAPI` (`ihm/passerelle/client_api.py`) reçoit l'adresse du serveur et l'identifiant de l'acteur. Elle envoie chaque requête avec `urllib`, l'identifiant dans l'en-tête `X-Acteur-Id` et un délai d'attente de 2 s. Elle offre une méthode par opération de l'API (`listerTickets`, `changerStatut`, `ouvrirBrouillonCreation`, `appliquerLot`…).
+- **Erreurs.** Le serveur décrit chaque erreur en JSON, avec le type et le message de l'exception métier, et un code HTTP (403, 404, 409…). `ClientAPI` relève la même exception, avec le même message : les vues l'affichent exactement comme au Lab 3. Un serveur qui ne répond pas lève `ServeurInjoignable`.
+- **Objets de lecture.** `ActeurLu`, `TicketLu`, `CommentaireLu`, `ElementLu`, `BrouillonLu` et `RapportLu` sont construits à partir du JSON reçu. Ils exposent les mêmes noms de propriétés que le modèle (`ticketID`, `title`, `status`, `creator.name`, `comments`, `description.elements`, `transitionsPermises`…), ce qui a permis de garder les vues presque intactes. Ils sont en lecture seule et **se comparent par identifiant** : deux lectures du même ticket donnent deux objets différents mais égaux.
+
+### Du patron Observateur au sondage de /version
+
+Au Lab 3, les fenêtres s'abonnaient au `SystemeTickets`, qui les prévenait de chaque changement. Une interface ne peut pas s'abonner à un objet qui vit dans un autre processus, sur le serveur. Le patron est donc conservé de chaque côté, et le réseau est traversé par un compteur :
+
+1. Sur le serveur, un compteur de version, lui-même observateur du `SystemeTickets`, augmente à chaque ajout, modification ou retrait de ticket. `GET /version` renvoie sa valeur.
+2. Côté client, chaque session a une `SourceTickets`, sujet observable qui garde la dernière copie des tickets. Une seule boucle `after()` de Tkinter lui fait relire `/version` toutes les secondes.
+3. Si le compteur a bougé, la `SourceTickets` relit les tickets, compare les nouvelles représentations JSON aux anciennes et notifie `ticketAjoute`, `ticketModifie` ou `ticketRetire`. Les fenêtres s'abonnent à elle exactement comme elles s'abonnaient au `SystemeTickets`.
+
+Un tour sans changement ne coûte qu'une petite requête. Après une action faite dans l'interface même, la source est rafraîchie tout de suite, sans attendre le tour suivant.
+
+### Règles de dépendances
+
+Ces règles gardent les couches séparées. `tests/test_regles_dependances.py` les vérifie à chaque exécution des tests, en lisant les imports de chaque fichier :
+
+1. Le métier n'importe ni `flask`, ni `api`, ni `ihm`, ni `tkinter`.
+2. `api/` (et `serveur.py`) n'importe ni `ihm` ni `tkinter`.
+3. Le client (`ihm/`, `app.py`) n'importe du métier que le contrat partagé : `modele.enums`, `modele.exceptions` et `modele.observateur`. Il ne crée jamais de `Ticket`, de `User` ni de session.
+4. Seul `ihm/passerelle/client_api.py` fait des requêtes HTTP.
+5. Le client ne lit ni n'écrit aucun fichier de `donnees/` : sans serveur, il ne fonctionne pas.
+6. La logique de présentation (tous les contrôleurs sauf le principal) ne charge pas tkinter, même indirectement, pour rester testable sans écran.
 
 ### Diagramme de classes du Lab 3
 
@@ -175,6 +327,8 @@ Le diagramme de classes du Laboratoire 3 reprend celui de la Partie 2 et y intè
 
 ![Diagramme de classes du Laboratoire 3 : interface (paquet ihm)](documents/Lab3_uml_2_interface.png)
 
+La page de l'interface montre le paquet `ihm` du Lab 3, avant la séparation entre client et serveur : la passerelle et les objets de lecture n'y figurent pas encore.
+
 ## Lancer les tests
 
 Depuis la racine du dépôt :
@@ -183,13 +337,19 @@ Depuis la racine du dépôt :
 python -m unittest discover -s tests -t .
 ```
 
-La suite compte 145 tests, lancés aussi par GitHub Actions à chaque push et à chaque pull request. Aucun ne crée de fenêtre : les contrôleurs de l'interface (`tests/test_controleur_admin.py`, `test_controleur_user.py`, `test_controleur_edition.py`) sont testés avec un faux contrôleur principal, et `tests/test_donnees_demo.py` vérifie que la démonstration se recharge sans avertissement.
+La suite compte 568 tests, lancés aussi par GitHub Actions à chaque push et à chaque pull request. Aucun ne crée de fenêtre et aucun n'a besoin d'un serveur lancé à part. Les routes du serveur sont testées avec le client de test de Flask, sans réseau ; quelques tests lancent eux-mêmes un vrai serveur sur un port libre (requêtes simultanées, `outils/essai_api.py`). Pour le client :
+
+- **Passerelle** (`test_passerelle_client.py`, `test_passerelle_source.py`) : `ClientAPI` contre un faux transport et un petit serveur HTTP local ; `SourceTickets` (rafraîchissement, notifications, suivi d'un détail).
+- **Logique de présentation** (`test_controleur_admin.py`, `test_controleur_user.py`, `test_controleur_edition.py`, `test_controleur_detail.py`) : chaque contrôleur contre les vraies routes du serveur. `tests/serveur_essai.py` branche la `ClientAPI` sur le client de test de Flask : la requête traverse tout le serveur, sans ouvrir de port.
+- **Architecture** (`test_regles_dependances.py`) : les six règles de dépendances.
+
+`tests/test_donnees_demo.py` vérifie que la démonstration se recharge sans avertissement.
 
 Le test de non-régression exécute `main.py` et compare sa sortie, dates neutralisées, à `tests/reference_main.txt`. Si la sortie change volontairement, régénérer la référence avec `python tests/test_non_regression.py`.
 
 ## Le modèle
 
-Le modèle vient du Lab 2. Avant d'écrire l'interface, nous l'avons complété : sessions de création, abandon d'une session, transitions consultables, patron Observateur, sauvegarde JSON et copie des images jointes. Le rapport (section 2) explique d'où vient chacun de ces ajouts ; cette section en donne l'usage.
+Le modèle vient du Lab 2. Avant d'écrire l'interface, nous l'avons complété : sessions de création, abandon d'une session, transitions consultables, patron Observateur, sauvegarde JSON et copie des images jointes. Cette section en donne l'usage.
 
 ### Lancer la démonstration du Lab 2
 
@@ -445,6 +605,14 @@ Le lot de quatre opérations donne 1 succès et 3 refus : transition invalide de
 
 ## Ce que nous avons appris
 
+### Au Lab 4
+
+**Griser n'est pas protéger.** Au Lab 3, nous avions appris à griser les boutons plutôt que de laisser le modèle refuser. Avec deux clients, ce n'est plus suffisant : un ticket peut être assigné par l'Admin pendant que son créateur confirme la suppression, et seul le serveur le voit (409). Le client doit donc griser pour le confort, mais le serveur doit toujours revérifier. L'API doit aussi envoyer tout ce dont le client a besoin pour décider, comme `transitionsPermises` et `dejaAssigne`, au lieu que le client recopie les règles.
+
+**Penser en ressources, pas en fonctions.** Au Lab 3, l'interface appelait des méthodes, comme `user.supprimerTicket(ticket)`. Au Lab 4, il a fallu décider ce qui mérite une adresse : les tickets, les acteurs, les images, et même le brouillon, qui n'existait jusque-là que dans la mémoire de l'interface. Les verbes HTTP donnent ensuite le sens de chaque action : « Soumettre à validation » n'est pas une nouvelle route, c'est un changement de statut, `PATCH /ticket/9` avec `{"statut": "VALIDATION"}`.
+
+**HTTP ne pousse rien : il faut demander.** Une fenêtre ne peut pas s'abonner à un objet d'un autre programme, et en HTTP le serveur ne parle que si on l'interroge. Nous avons gardé l'Observateur de chaque côté, relié par un compteur de version que le client interroge chaque seconde. C'est simple et robuste, au prix d'une seconde de délai et d'une requête par seconde et par interface.
+
 ### Au Lab 3
 
 **Figer le contrat avant le code.** Dès la première étape du sprint, toutes les fenêtres existaient sous forme d'ébauches, avec leurs constructeurs définitifs. Écrire des fenêtres qui ne faisaient rien ressemblait à du temps perdu ; c'est pourtant ce qui nous a laissés travailler en parallèle, avec quatre pull requests fusionnées sans conflit.
@@ -469,8 +637,13 @@ Le lot de quatre opérations donne 1 succès et 3 refus : transition invalide de
 
 ```
 main.py                     scénarios de démonstration A à Q
-app.py                      point d'entrée de l'interface graphique (tkinter)
-Lab3_6GEI311_Rapport.pdf    rapport du Lab 3 (copie de documents/Lab3_6GEI311_Rapport.pdf)
+app.py                      point d'entrée de l'interface (python app.py [--url http://127.0.0.1:5000])
+serveur.py                  point d'entrée du serveur (python serveur.py [--port 5000])
+openapi.yaml                contrat de l'API REST
+requirements.txt            flask
+Lab4_6GEI311_Rapport.pdf    rapport du Lab 4 (copie de documents/Lab4_6GEI311_Rapport.pdf)
+api/                        SERVEUR : fabrique Flask, contexte, routes, représentations, erreurs
+web/                        page web du bonus (index.html, app.js, style.css), servie par Flask
 modele/
   enums.py                  Statut, Priorite
   exceptions.py             les cinq exceptions métier
@@ -486,21 +659,30 @@ sessions/                   SessionOperations, SessionEdition, SessionCreation, 
 persistance/
   depot_json.py             DepotJSON, sauvegarde et rechargement en JSON
   stockage_images.py        StockageImages, copie des images jointes dans donnees/images/
-ihm/
+ihm/                        CLIENT de l'API REST
+  passerelle/
+    client_api.py           ClientAPI : seul endroit qui fait des requêtes HTTP (urllib)
+    erreurs.py              ServeurInjoignable ; exceptions reconstruites à partir des réponses
+    objets_lecture.py       ActeurLu, TicketLu, CommentaireLu, ElementLu, BrouillonLu, RapportLu
+    source_tickets.py       SourceTickets : copie locale observable, rafraîchie par /version
+  controleurs/              logique de présentation : ControleurPrincipal (fenêtres, sessions,
+                            sondage) et, sans tkinter, ControleurAdmin, ControleurUser,
+                            ControleurEdition, ControleurDetail
   vues/                     FenetreBase et une fenêtre tkinter par écran (F1 à F8)
-  controleurs/              ControleurPrincipal (navigation, données) et contrôleurs sans tkinter
 outils/
   generer_demo.py           génère donnees/demo.json et ses images avec l'API du modèle
+  essai_api.py              vérification rapide de l'API contre un serveur lancé
 donnees/
   demo.json                 données de démonstration (versionnées)
   images/                   images de la démonstration (demo_*.png) et copies faites par l'application
-  sauvegarde.json           état sauvegardé à la fermeture de l'interface (ignoré par Git)
+  sauvegarde.json           état sauvegardé par le serveur après chaque modification (ignoré par Git)
 ressources/                 artefacts de démonstration (texte, image PNG, vidéo factice)
 documents/                  diagrammes UML, documents de sprint et rapports
-  Lab3_6GEI311_Rapport.pdf  rapport du Lab 3 (source : Lab3_6GEI311_Rapport.docx)
+  Lab4_6GEI311_Rapport.pdf  rapport du Lab 4 (source : Lab4_6GEI311_Rapport.docx)
   Lab3_uml_*.png            diagramme de classes du Lab 3 (source : Lab3_6GEI311_diagramme_classes.drawio)
   maquettes/                maquettes Figma des fenêtres de l'interface
-  captures_lab3/            captures des fenêtres réelles, pour le rapport et ce README
+  captures_lab3/            captures des fenêtres réelles de la GUI
+  captures_lab4/            captures de la page web
   captures/                 captures de la sortie de main.py (Lab 2)
 tests/                      tests unitaires et test de non-régression de main.py
 ```
