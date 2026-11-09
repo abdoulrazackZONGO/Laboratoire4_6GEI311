@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gestion des tickets</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="bandeau" id="bandeau" role="alert" hidden>
+    Serveur injoignable : les données affichées ne sont plus à jour. Nouvel essai chaque seconde.
+  </div>
+
+  <header class="entete">
+    <h1>Gestion des tickets</h1>
+    <span class="direct" id="direct" aria-live="polite"></span>
+    <span class="role" id="role" hidden></span>
+    <label class="choix-acteur">
+      <span class="visuellement-cache">Acteur connecté</span>
+      <select id="acteur">
+        <option value="">Choisissez votre compte</option>
+      </select>
+    </label>
+  </header>
+
+  <main id="accueil" class="accueil">
+    <section class="carte invite">
+      <h2>Bienvenue</h2>
+      <p>Choisissez avec quel compte vous êtes connecté, en haut à droite.</p>
+      <p class="aide" id="erreur-acteurs" role="alert"></p>
+    </section>
+  </main>
+
+  <main id="application" class="application" hidden>
+    <section class="carte liste" aria-labelledby="titre-liste">
+      <div class="entete-liste">
+        <h2 id="titre-liste">Tickets</h2>
+        <button type="button" class="bouton principal" id="bouton-nouveau" hidden>Nouveau ticket</button>
+      </div>
+
+      <form class="formulaire" id="formulaire" hidden novalidate>
+        <label>Titre
+          <input name="titre" id="champ-titre" required maxlength="120" autocomplete="off">
+        </label>
+        <fieldset class="segments">
+          <legend>Priorité</legend>
+          <label><input type="radio" name="priorite" value="BASSE"><span>Basse</span></label>
+          <label><input type="radio" name="priorite" value="MOYENNE" checked><span>Moyenne</span></label>
+          <label><input type="radio" name="priorite" value="HAUTE"><span>Haute</span></label>
+          <label><input type="radio" name="priorite" value="CRITIQUE"><span>Critique</span></label>
+        </fieldset>
+        <label>Description
+          <textarea name="texte" id="champ-texte" required rows="4"></textarea>
+        </label>
+        <p class="aide">Images et commentaires : depuis l'application, par un brouillon.</p>
+        <p class="erreur" id="erreur-formulaire" role="alert" hidden></p>
+        <div class="pied">
+          <button type="button" class="bouton" id="bouton-annuler">Annuler</button>
+          <button type="submit" class="bouton principal" id="bouton-creer">Créer le ticket</button>
+        </div>
+      </form>
+
+      <div class="onglets" id="onglets" role="tablist" aria-label="Mes tickets" hidden></div>
+      <div class="filtres" id="filtres" role="group" aria-label="Filtrer par statut"></div>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">Titre</th>
+            <th scope="col" class="col-priorite">Priorité</th>
+            <th scope="col">Statut</th>
+            <th scope="col" class="col-assigne" id="entete-personne">Assigné</th>
+          </tr>
+        </thead>
+        <tbody id="lignes"></tbody>
+      </table>
+      <p class="vide liste-vide" id="liste-vide" hidden>Aucun ticket.</p>
+    </section>
+
+    <section class="carte detail" id="detail" aria-live="polite">
+      <p class="vide">Choisissez un ticket dans la liste pour voir son détail.</p>
+    </section>
+  </main>
+
+  <div class="notification" id="notification" role="status" hidden></div>
+</body>
+</html>
