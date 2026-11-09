@@ -64,8 +64,6 @@ L'interface n'utilise que la bibliothèque standard : tkinter pour les fenêtres
 - **Serveur arrêté en cours de route** : une seule boîte d'erreur s'affiche, puis les listes se remettent à jour d'elles-mêmes dès que le serveur répond de nouveau.
 - **Aucun fichier de données côté client.** L'interface ne lit ni n'écrit aucun fichier de `donnees/`. La fermer ne demande donc aucune confirmation et ne perd rien : chaque action a déjà été enregistrée par le serveur, et une création ou une édition commencée dans F5 reste en pause sur le serveur.
 
-![Serveur arrêté en cours de route : une boîte d'erreur, listes inchangées](documents/captures_lab4/serveur_injoignable.png)
-
 ## Les fenêtres
 
 L'interface compte huit fenêtres, numérotées comme dans les maquettes Figma de `documents/maquettes/`. Leur apparence n'a pas changé au Lab 4 : les captures ci-dessous, prises au Lab 3 sur les données de démonstration, restent valables ; toutes sont dans `documents/captures_lab3/`. Ce qui change, c'est d'où viennent les données (des requêtes `GET`) et où vont les actions (des requêtes `POST`, `PATCH` ou `DELETE`).
