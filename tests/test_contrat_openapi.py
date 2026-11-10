@@ -20,8 +20,12 @@ CONTRAT = Path(__file__).resolve().parent.parent / "openapi.yaml"
 METHODES_HTTP = {"get", "put", "post", "delete", "patch", "options", "head", "trace"}
 # Ajoutées par Werkzeug à chaque route : elles ne sont pas des opérations du contrat.
 METHODES_AUTOMATIQUES = {"HEAD", "OPTIONS"}
-# Routes servies hors du contrat (la page web du bonus W1, par exemple) : chacune s'écrit ici.
-ROUTES_HORS_CONTRAT: set[tuple[str, str]] = set()
+# Routes servies hors du contrat : la page web du bonus W1, cliente de l'API comme la GUI.
+ROUTES_HORS_CONTRAT: set[tuple[str, str]] = {
+    ("/", "GET"),
+    ("/app.js", "GET"),
+    ("/style.css", "GET"),
+}
 
 
 def operationsDuContrat(texte: str) -> set[tuple[str, str]]:

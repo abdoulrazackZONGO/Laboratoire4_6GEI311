@@ -1,20 +1,143 @@
-# Laboratoire 3 : interface graphique du système de gestion de tickets
+# Laboratoire 4 : système de gestion de tickets en client-serveur, par une API REST
 
 Cours **6GEI311 Architecture des logiciels**
 
 **Équipe :** Zongo T Julien, Zongo A Razack
 
+Le Lab 4 coupe l'application du Lab 3 en deux processus. Un serveur Flask (`serveur.py`) détient le modèle et l'expose par une API REST, décrite dans [`openapi.yaml`](openapi.yaml). La GUI Tkinter (`app.py`) n'appelle plus le modèle : elle passe par cette API, comme la page web servie par le même serveur (bonus). Le rapport du laboratoire est [`Lab4_6GEI311_Rapport.pdf`](Lab4_6GEI311_Rapport.pdf), avec sa source Word dans `documents/`.
+
+Les sections [Lab 4](#lab-4--client-serveur) ci-dessous expliquent comment lancer le serveur et les clients. Les sections suivantes viennent des labs 2 et 3 : elles décrivent les fenêtres et le modèle, qui n'ont pas changé dans leur usage.
+
+## Lab 4 : client-serveur
+
+### Installation
+
+**Prérequis :** Python 3.10 ou plus récent et Git. Le serveur a besoin de Flask ; la GUI n'utilise que la bibliothèque standard.
+
+```bash
+git clone https://github.com/abdoulrazackZONGO/Laboratoire4_6GEI311.git
+```
+
+```bash
+cd Laboratoire4_6GEI311
+```
+
+```bash
+python -m venv .venv
+```
+
+Activer l'environnement (PowerShell : `.venv\Scripts\Activate.ps1`), puis :
+
+```bash
+pip install -r requirements.txt
+```
+
+### Lancer le serveur et les clients
+
+Dans un premier terminal, le serveur (http://127.0.0.1:5000) :
+
+```bash
+python serveur.py
+```
+
+Dans un deuxième terminal, la GUI, autant de fois que de fenêtres voulues (option `--url` pour un autre serveur) :
+
+```bash
+python app.py
+```
+
+La page web s'ouvre dans un navigateur à l'adresse http://127.0.0.1:5000/. Juste avant une démonstration, `python outils/essai_api.py` enchaîne quelques requêtes réelles contre le serveur lancé et affiche chaque code reçu à côté du code attendu.
+
+- **Au démarrage**, le serveur charge `donnees/sauvegarde.json` s'il existe, sinon la démonstration `donnees/demo.json`. Il sauvegarde après chaque modification réussie.
+- **Pour repartir de la démonstration**, arrêter le serveur, supprimer `donnees/sauvegarde.json`, puis relancer le serveur.
+- Les brouillons (créations et éditions en cours) ne sont pas sauvegardés : un redémarrage du serveur les perd.
+
+### Architecture
+
+| Couche | Paquets | Rôle |
+|---|---|---|
+| Modèle métier | `modele`, `etats`, `acteurs`, `description`, `commandes`, `sessions` | Toutes les règles ; inchangé sauf quatre ajouts (rapport, section I.3). |
+| Persistance | `persistance` | `DepotJSON`, `StockageImages`. |
+| Contrôleur (serveur) | `api/` | Routes Flask : identifient l'acteur (`X-Acteur-Id`), vérifient la requête, appellent une méthode métier, sauvegardent, répondent en JSON. |
+| Passerelle (client) | `ihm/passerelle` | `ClientAPI`, objets de lecture et `SourceTickets`, qui sonde `GET /version` chaque seconde. |
+| Présentation | `ihm/controleurs`, `ihm/vues`, `web/` | Fenêtres F1 à F8 de la GUI, et page web. |
+
+Le contrat de l'API ([`openapi.yaml`](openapi.yaml)) décrit les 21 opérations. Un test vérifie que chaque chemin du contrat existe dans le serveur, et inversement ; un autre vérifie les règles de dépendances entre les couches.
+
+### La page web (bonus)
+
+Le serveur sert une page à l'adresse http://127.0.0.1:5000/ (`web/index.html`, `app.js`, `style.css`), sans framework. Elle ne passe que par l'API, comme la GUI, et reprend ses deux vues : celle de l'Admin (F2) et celle du User (F3). Les captures ci-dessous sont celles de la page réelle, sur les données de démonstration ; elles sont dans `documents/captures_lab4/`.
+
+| Élément | Comportement |
+|---|---|
+| Connexion | Une liste des acteurs (`GET /acteurs`). Le compte choisi est mémorisé par le navigateur, puis envoyé dans `X-Acteur-Id` à chaque requête. |
+| Vue Admin | « Tous les tickets », filtrables par statut. Dans le détail, « Changer le statut » : assigner à un User, désassigner, valider, fermer (`PATCH`). |
+| Vue User | « Mes tickets », en deux onglets : « Créés par moi » (`?createur=`) et « Assignés à moi » (`?assigne=`). Dans le détail : soumettre à validation (`PATCH`) et supprimer (`DELETE`). « Nouveau ticket » crée un ticket (`POST /tickets`). |
+| Boutons | Actifs seulement si l'action est possible : statut dans `transitionsPermises`, ticket assigné à moi, ticket créé par moi et jamais assigné. Une ligne explique chaque bouton grisé. |
+| Refus | Le type et le message renvoyés par l'API s'affichent dans la page, près de l'action. |
+| Suivi | La page interroge `GET /version` chaque seconde : un changement fait dans la GUI apparaît en une ou deux secondes. Un bandeau prévient si le serveur ne répond plus. |
+
+**Connexion.** Avant tout choix, la page invite à choisir un compte en haut à droite.
+
+![Page web : choix du compte](documents/captures_lab4/web_1_connexion.jpg)
+
+**Vue Admin.** Tous les tickets, filtrables par statut, et le détail du ticket choisi, avec son image servie par l'API. Seuls les changements de statut permis depuis « Assigné » sont actifs : « Valider » est grisé.
+
+![Page web : vue Admin, détail du ticket 2](documents/captures_lab4/web_2_admin.jpg)
+
+**Vue User, « Créés par moi ».** T Julien voit les trois tickets qu'il a créés. Le ticket 6 n'a jamais été assigné : « Supprimer… » est actif. « Soumettre à validation » est grisé, et la ligne du dessous dit pourquoi.
+
+![Page web : vue User, onglet Créés par moi](documents/captures_lab4/web_3_user_crees.jpg)
+
+**Vue User, « Assignés à moi ».** La dernière colonne montre le créateur. Le ticket 10 est assigné à T Julien : il peut le soumettre à validation, mais pas le supprimer.
+
+![Page web : vue User, onglet Assignés à moi](documents/captures_lab4/web_4_user_assignes.jpg)
+
+**Création d'un ticket.** Le formulaire s'ouvre au-dessus de la liste. Un titre vide est refusé par le serveur, et son message s'affiche dans le formulaire.
+
+![Page web : formulaire de création avec un refus du serveur](documents/captures_lab4/web_5_user_creation.jpg)
+
+### Scénario de démonstration (5 minutes)
+
+Préparer : supprimer `donnees/sauvegarde.json`, lancer le serveur, puis deux GUI connectées l'une en Ambroise Fleury (Admin, F2), l'autre en T Julien (User, F3).
+
+1. F3 : « Nouveau ticket », titre « Paiement refusé », priorité HAUTE, « Continuer ».
+2. F5 : taper le texte, ajouter l'image `ressources/capture_ecran.png` et un commentaire (« Ajouter »).
+3. F5 : « Mettre en pause » ; dans F3, onglet « Brouillons », « Reprendre l'édition » : le texte tapé est là.
+4. F5 : « Créer le ticket ». Le ticket #11 apparaît dans F2 en une ou deux secondes.
+5. F2 : « Voir le détail » de #11 : texte, image et commentaire.
+6. F2 : #11, « Assigner… » à T Julien. Il apparaît dans « Assignés à moi » de F3.
+7. F3 : « Soumettre à validation ». F2 affiche VALIDATION.
+8. F2 : #6 et #3 (Ctrl+clic), « Assigner… » à Mike Tonny : rapport avec un succès et un refus (#3 est FERME).
+9. PowerShell, sans GUI : valider #11.
+
+```powershell
+Invoke-RestMethod -Method Patch -Uri http://127.0.0.1:5000/ticket/11 -Headers @{"X-Acteur-Id"="1"} -ContentType "application/json" -Body '{"statut":"TERMINE"}'
+```
+
+10. PowerShell : tenter de le fermer, ce qui est refusé (409, transition invalide depuis TERMINE).
+
+```powershell
+try { Invoke-RestMethod -Method Patch -Uri http://127.0.0.1:5000/ticket/11 -Headers @{"X-Acteur-Id"="1"} -ContentType "application/json" -Body '{"statut":"FERME"}' } catch { $_.ErrorDetails.Message }
+```
+
+11. Page web http://127.0.0.1:5000/ : un ticket créé en User apparaît dans la GUI en une ou deux secondes, et l'inverse.
+
+---
+
+# Labs 2 et 3
+
 Le Lab 3 donne une interface graphique au système de tickets du Lab 2. Depuis une même connexion, un Admin et plusieurs utilisateurs ouvrent chacun leur fenêtre. Les utilisateurs créent et décrivent leurs tickets, l'Admin les fait avancer dans leur cycle de vie, et chaque liste ouverte se met à jour dès qu'un autre acteur change quelque chose.
 
 La vidéo de démonstration (scénarios de test de l'application) est jointe à la release [Lab 3 : remise en vidéo demo](https://github.com/zongo-julien/Laboratoire3_6GEI311_Architecture_des_logiciels/releases/download/lab3-remise/Lab3_demo_scenarios.mp4).
 
-L'interface est écrite avec tkinter, sans dépendance externe, selon une architecture MVC posée sur le modèle du Lab 2. Ce modèle garde ses patrons (State, Template Method, Factory Method, Command) et en gagne un, l'Observateur. Le rapport du laboratoire, avec les maquettes Figma et les captures de toutes les fenêtres, est à la racine du dépôt, [`Lab3_6GEI311_Rapport.pdf`](Lab3_6GEI311_Rapport.pdf), avec une copie et sa source Word dans `documents/`.
+L'interface est écrite avec tkinter, sans dépendance externe, selon une architecture MVC posée sur le modèle du Lab 2. Ce modèle garde ses patrons (State, Template Method, Factory Method, Command) et en gagne un, l'Observateur. Les maquettes Figma et les captures de toutes les fenêtres sont dans `documents/`.
 
 La Partie 1 du Lab 2 (implémentation littérale du diagramme de classes initial) est dans un dépôt séparé : [Laboratoire2_6GEI311_Architecture_des_logiciels_Partie1](https://github.com/zongo-julien/zongo-julien-Laboratoire2_6GEI311_Architecture_des_logiciels_Partie1).
 
 ## Sommaire
 
-1. [Installation](#installation)
+1. [Lab 4 : client-serveur](#lab-4--client-serveur), dont [la page web](#la-page-web-bonus)
 2. [Lancer l'interface](#lancer-linterface)
 3. [Les fenêtres](#les-fenêtres)
    - [Connexion (F1)](#connexion-f1)
@@ -31,22 +154,6 @@ La Partie 1 du Lab 2 (implémentation littérale du diagramme de classes initial
 7. [Résultats du Lab 2](#résultats-du-lab-2)
 8. [Ce que nous avons appris](#ce-que-nous-avons-appris)
 9. [Structure du code](#structure-du-code)
-
-## Installation
-
-**Prérequis :** Python 3.10 ou plus récent et Git. Aucune dépendance externe n'est nécessaire : le projet n'utilise que la bibliothèque standard, tkinter compris.
-
-Cloner le dépôt :
-
-```bash
-git clone https://github.com/zongo-julien/Laboratoire3_6GEI311_Architecture_des_logiciels.git
-```
-
-Se placer à la racine du dépôt :
-
-```bash
-cd Laboratoire3_6GEI311_Architecture_des_logiciels
-```
 
 ## Lancer l'interface
 
@@ -230,7 +337,7 @@ Depuis la racine du dépôt :
 python -m unittest discover -s tests -t .
 ```
 
-La suite compte 556 tests, lancés aussi par GitHub Actions à chaque push et à chaque pull request. Aucun ne crée de fenêtre et aucun n'a besoin d'un serveur lancé à part. Pour le client :
+La suite compte 568 tests, lancés aussi par GitHub Actions à chaque push et à chaque pull request. Aucun ne crée de fenêtre et aucun n'a besoin d'un serveur lancé à part. Les routes du serveur sont testées avec le client de test de Flask, sans réseau ; quelques tests lancent eux-mêmes un vrai serveur sur un port libre (requêtes simultanées, `outils/essai_api.py`). Pour le client :
 
 - **Passerelle** (`test_passerelle_client.py`, `test_passerelle_source.py`) : `ClientAPI` contre un faux transport et un petit serveur HTTP local ; `SourceTickets` (rafraîchissement, notifications, suivi d'un détail).
 - **Logique de présentation** (`test_controleur_admin.py`, `test_controleur_user.py`, `test_controleur_edition.py`, `test_controleur_detail.py`) : chaque contrôleur contre les vraies routes du serveur. `tests/serveur_essai.py` branche la `ClientAPI` sur le client de test de Flask : la requête traverse tout le serveur, sans ouvrir de port.
@@ -242,7 +349,7 @@ Le test de non-régression exécute `main.py` et compare sa sortie, dates neutra
 
 ## Le modèle
 
-Le modèle vient du Lab 2. Avant d'écrire l'interface, nous l'avons complété : sessions de création, abandon d'une session, transitions consultables, patron Observateur, sauvegarde JSON et copie des images jointes. Le rapport (section 2) explique d'où vient chacun de ces ajouts ; cette section en donne l'usage.
+Le modèle vient du Lab 2. Avant d'écrire l'interface, nous l'avons complété : sessions de création, abandon d'une session, transitions consultables, patron Observateur, sauvegarde JSON et copie des images jointes. Cette section en donne l'usage.
 
 ### Lancer la démonstration du Lab 2
 
@@ -531,7 +638,12 @@ Le lot de quatre opérations donne 1 succès et 3 refus : transition invalide de
 ```
 main.py                     scénarios de démonstration A à Q
 app.py                      point d'entrée de l'interface (python app.py [--url http://127.0.0.1:5000])
-Lab3_6GEI311_Rapport.pdf    rapport du Lab 3 (copie de documents/Lab3_6GEI311_Rapport.pdf)
+serveur.py                  point d'entrée du serveur (python serveur.py [--port 5000])
+openapi.yaml                contrat de l'API REST
+requirements.txt            flask
+Lab4_6GEI311_Rapport.pdf    rapport du Lab 4 (copie de documents/Lab4_6GEI311_Rapport.pdf)
+api/                        SERVEUR : fabrique Flask, contexte, routes, représentations, erreurs
+web/                        page web du bonus (index.html, app.js, style.css), servie par Flask
 modele/
   enums.py                  Statut, Priorite
   exceptions.py             les cinq exceptions métier
@@ -559,16 +671,18 @@ ihm/                        CLIENT de l'API REST
   vues/                     FenetreBase et une fenêtre tkinter par écran (F1 à F8)
 outils/
   generer_demo.py           génère donnees/demo.json et ses images avec l'API du modèle
+  essai_api.py              vérification rapide de l'API contre un serveur lancé
 donnees/
   demo.json                 données de démonstration (versionnées)
   images/                   images de la démonstration (demo_*.png) et copies faites par l'application
-  sauvegarde.json           état sauvegardé à la fermeture de l'interface (ignoré par Git)
+  sauvegarde.json           état sauvegardé par le serveur après chaque modification (ignoré par Git)
 ressources/                 artefacts de démonstration (texte, image PNG, vidéo factice)
 documents/                  diagrammes UML, documents de sprint et rapports
-  Lab3_6GEI311_Rapport.pdf  rapport du Lab 3 (source : Lab3_6GEI311_Rapport.docx)
+  Lab4_6GEI311_Rapport.pdf  rapport du Lab 4 (source : Lab4_6GEI311_Rapport.docx)
   Lab3_uml_*.png            diagramme de classes du Lab 3 (source : Lab3_6GEI311_diagramme_classes.drawio)
   maquettes/                maquettes Figma des fenêtres de l'interface
-  captures_lab3/            captures des fenêtres réelles, pour le rapport et ce README
+  captures_lab3/            captures des fenêtres réelles de la GUI
+  captures_lab4/            captures de la page web
   captures/                 captures de la sortie de main.py (Lab 2)
 tests/                      tests unitaires et test de non-régression de main.py
 ```
