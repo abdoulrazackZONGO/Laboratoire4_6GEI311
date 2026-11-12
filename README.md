@@ -3,6 +3,7 @@
 Cours **6GEI311 Architecture des logiciels**
 
 **Équipe :** Zongo T Julien, Zongo A Razack
+Démo vidéo du lab 4 après présentation partielle au laboratoire : 'https://uqacca0-my.sharepoint.com/:v:/g/personal/tjzongo_etu_uqac_ca/IQBPWC0uQYb4QrmbvJu52GV0ATSL73hzIkkLvLZEocktJWI?e=hJYlgo'
 
 Le Lab 4 coupe l'application du Lab 3 en deux processus. Un serveur Flask (`serveur.py`) détient le modèle et l'expose par une API REST, décrite dans [`openapi.yaml`](openapi.yaml). La GUI Tkinter (`app.py`) n'appelle plus le modèle : elle passe par cette API, comme la page web servie par le même serveur (bonus). Le rapport du laboratoire est [`Lab4_6GEI311_Rapport.pdf`](Lab4_6GEI311_Rapport.pdf), avec sa source Word dans `documents/`.
 
